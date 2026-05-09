@@ -1,0 +1,13 @@
+{
+  "name": "lake-mapper-server",
+  "version": "1.0.0",
+  "description": "Backend server for lake mapper sync",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "dependencies": {},
+  "engines": {
+    "node": ">=18"
+  }
+}
