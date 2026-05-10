@@ -1,7 +1,10 @@
 import 'package:flutter/material.dart';
-import 'screens/home_screen.dart';
+import 'package:google_fonts/google_fonts.dart';
+import 'theme/app_theme.dart';
+import 'widgets/main_shell.dart';
 
-void main() {
+void main() async {
+  WidgetsFlutterBinding.ensureInitialized();
   runApp(const LakeMapperApp());
 }
 
@@ -12,11 +15,11 @@ class LakeMapperApp extends StatelessWidget {
   Widget build(BuildContext context) {
     return MaterialApp(
       title: 'Lake Mapper',
-      theme: ThemeData(
-        colorScheme: ColorScheme.fromSeed(seedColor: Colors.blue),
-        useMaterial3: true,
+      debugShowCheckedModeBanner: false,
+      theme: AppTheme.darkTheme.copyWith(
+        textTheme: GoogleFonts.interTextTheme(AppTheme.darkTheme.textTheme),
       ),
-      home: const HomeScreen(),
+      home: const MainShell(),
     );
   }
 }

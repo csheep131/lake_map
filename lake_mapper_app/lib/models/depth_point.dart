@@ -4,6 +4,7 @@ class DepthPoint {
   final double latitude;
   final double longitude;
   final double depthM;
+  final double? accuracyM;
   final String? note;
   final DateTime createdAt;
   final int? pointNumber;
@@ -14,6 +15,7 @@ class DepthPoint {
     required this.latitude,
     required this.longitude,
     required this.depthM,
+    this.accuracyM,
     this.note,
     required this.createdAt,
     this.pointNumber,
@@ -26,6 +28,7 @@ class DepthPoint {
       'latitude': latitude,
       'longitude': longitude,
       'depth_m': depthM,
+      'accuracy_m': accuracyM,
       'note': note,
       'created_at': createdAt.toIso8601String(),
       'point_number': pointNumber,
@@ -39,6 +42,7 @@ class DepthPoint {
       latitude: map['latitude'] as double,
       longitude: map['longitude'] as double,
       depthM: map['depth_m'] as double,
+      accuracyM: map['accuracy_m'] as double?,
       note: map['note'] as String?,
       createdAt: DateTime.parse(map['created_at'] as String),
       pointNumber: map['point_number'] as int?,
@@ -51,6 +55,7 @@ class DepthPoint {
     double? latitude,
     double? longitude,
     double? depthM,
+    double? accuracyM,
     String? note,
     DateTime? createdAt,
     int? pointNumber,
@@ -61,6 +66,7 @@ class DepthPoint {
       latitude: latitude ?? this.latitude,
       longitude: longitude ?? this.longitude,
       depthM: depthM ?? this.depthM,
+      accuracyM: accuracyM ?? this.accuracyM,
       note: note ?? this.note,
       createdAt: createdAt ?? this.createdAt,
       pointNumber: pointNumber ?? this.pointNumber,

@@ -1,0 +1,23 @@
+version: '3.8'
+
+services:
+  postgres:
+    image: postgis/postgis:15-3.3
+    container_name: lake_mapper_db
+    environment:
+      POSTGRES_USER: lakeuser
+      POSTGRES_PASSWORD: lake123
+      POSTGRES_DB: lakemap
+    ports:
+      - "5433:5432"
+    volumes:
+      - lake_db_data:/var/lib/postgresql/data
+      - ./init.sql:/docker-entrypoint-initdb.d/01-init.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U lakeuser -d lakemap"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+volumes:
+  lake_db_data:

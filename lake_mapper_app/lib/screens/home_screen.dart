@@ -1,11 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:geolocator/geolocator.dart';
+import 'package:google_fonts/google_fonts.dart';
 import '../database/app_database.dart';
 import '../models/depth_point.dart';
 import '../services/sync_service.dart';
-import 'map_screen.dart';
-import 'export_screen.dart';
-import 'settings_screen.dart';
+import '../theme/app_colors.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -17,7 +16,7 @@ class HomeScreen extends StatefulWidget {
 class _HomeScreenState extends State<HomeScreen> {
   final _depthController = TextEditingController();
   final _noteController = TextEditingController();
-  
+
   Position? _currentPosition;
   bool _isLoading = false;
   String? _errorMessage;
@@ -64,7 +63,7 @@ class _HomeScreenState extends State<HomeScreen> {
     try {
       final result = await SyncService.instance.syncAll();
       setState(() {
-        _syncStatus = 'Hochgeladen: ${result.uploaded}, Heruntergeladen: ${result.downloaded}';
+        _syncStatus = 'Hoch: ${result.uploaded} | Runter: ${result.downloaded}';
       });
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -73,7 +72,7 @@ class _HomeScreenState extends State<HomeScreen> {
       }
     } catch (e) {
       setState(() {
-        _syncStatus = 'Sync-Fehler: $e';
+        _syncStatus = 'Sync-Fehler';
       });
     } finally {
       setState(() => _isSyncing = false);
@@ -90,7 +89,7 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   Future<void> _loadCurrentPosition() async {
-    setState(() { _errorMessage = null; });
+    setState(() => _errorMessage = null);
 
     try {
       final position = await Geolocator.getCurrentPosition(
@@ -142,7 +141,10 @@ class _HomeScreenState extends State<HomeScreen> {
 
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Messpunkt #${_lastPointNumber} gespeichert')),
+          SnackBar(
+            content: Text('Messpunkt #$_lastPointNumber gespeichert'),
+            backgroundColor: AppColors.cyan,
+          ),
         );
         await _loadRecentPoints();
         _loadCurrentPosition();
@@ -156,23 +158,20 @@ class _HomeScreenState extends State<HomeScreen> {
 
   void _showError(String message) {
     ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text(message), backgroundColor: Colors.red),
+      SnackBar(
+        content: Text(message),
+        backgroundColor: AppColors.error,
+      ),
     );
   }
 
-  Color _getDepthColor(double depth) {
-    if (depth < 2) return Colors.green[300]!;
-    if (depth < 4) return Colors.green[600]!;
-    if (depth < 6) return Colors.blue[300]!;
-    if (depth < 8) return Colors.blue[600]!;
-    return Colors.blue[900]!;
-  }
+  Color _getDepthColor(double depth) => AppColors.depthColor(depth);
 
   Future<void> _duplicateLastPoint() async {
     if (_lastPointNumber == null || _currentPosition == null) return;
 
     final lastPoint = _recentPoints.firstWhere((p) => p.pointNumber == _lastPointNumber);
-    
+
     setState(() => _isLoading = true);
 
     try {
@@ -192,9 +191,14 @@ class _HomeScreenState extends State<HomeScreen> {
       if (mounted) {
         await _loadRecentPoints();
         _loadCurrentPosition();
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Tiefe übernommen - GPS aktualisiert')),
-        );
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Tiefe übernommen – GPS aktualisiert'),
+              backgroundColor: AppColors.amber,
+            ),
+          );
+        }
       }
     } catch (e) {
       _showError('Fehler: $e');
@@ -203,154 +207,350 @@ class _HomeScreenState extends State<HomeScreen> {
     }
   }
 
+  Widget _buildGpsCard() {
+    return Container(
+      decoration: BoxDecoration(
+        color: AppColors.surface,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: AppColors.surfaceHighlight),
+      ),
+      padding: const EdgeInsets.all(16),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Row(
+                children: [
+                  Container(
+                    width: 8,
+                    height: 8,
+                    decoration: BoxDecoration(
+                      color: _currentPosition != null ? AppColors.success : AppColors.error,
+                      shape: BoxShape.circle,
+                      boxShadow: [
+                        BoxShadow(
+                          color: (_currentPosition != null ? AppColors.success : AppColors.error).withValues(alpha: 0.4),
+                          blurRadius: 8,
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  Text(
+                    'GPS SIGNAL',
+                    style: GoogleFonts.robotoMono(
+                      fontSize: 11,
+                      fontWeight: FontWeight.w600,
+                      color: AppColors.textMuted,
+                      letterSpacing: 1.2,
+                    ),
+                  ),
+                ],
+              ),
+              if (_lastPointNumber != null)
+                Text(
+                  '#$_lastPointNumber',
+                  style: GoogleFonts.robotoMono(
+                    fontSize: 12,
+                    color: AppColors.cyan,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          if (_currentPosition != null) ...[
+            _buildCoordRow('LAT', _currentPosition!.latitude.toStringAsFixed(6)),
+            const SizedBox(height: 4),
+            _buildCoordRow('LON', _currentPosition!.longitude.toStringAsFixed(6)),
+            const SizedBox(height: 8),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Text(
+                  'Genauigkeit: ±${_currentPosition!.accuracy.toStringAsFixed(1)} m',
+                  style: TextStyle(
+                    fontSize: 12,
+                    color: _currentPosition!.accuracy > _accuracyWarningThreshold
+                        ? AppColors.amber
+                        : AppColors.textSecondary,
+                  ),
+                ),
+                if (_currentPosition!.accuracy > _accuracyWarningThreshold)
+                  const Text(
+                    '⚠ UNGENAU',
+                    style: TextStyle(
+                      color: AppColors.amber,
+                      fontSize: 11,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+              ],
+            ),
+          ] else if (_errorMessage != null) ...[
+            Text(_errorMessage!, style: const TextStyle(color: AppColors.error)),
+            const SizedBox(height: 8),
+            OutlinedButton(
+              onPressed: _loadCurrentPosition,
+              child: const Text('Erneut versuchen'),
+            ),
+          ] else
+            const Center(
+              child: Padding(
+                padding: EdgeInsets.all(16),
+                child: CircularProgressIndicator(color: AppColors.cyan),
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildCoordRow(String label, String value) {
+    return Row(
+      children: [
+        SizedBox(
+          width: 40,
+          child: Text(
+            label,
+            style: GoogleFonts.robotoMono(
+              fontSize: 10,
+              color: AppColors.textMuted,
+              fontWeight: FontWeight.w600,
+              letterSpacing: 1,
+            ),
+          ),
+        ),
+        Text(
+          value,
+          style: GoogleFonts.robotoMono(
+            fontSize: 14,
+            color: AppColors.textPrimary,
+            fontWeight: FontWeight.w500,
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildDepthInput() {
+    return TextField(
+      controller: _depthController,
+      keyboardType: const TextInputType.numberWithOptions(decimal: true),
+      style: GoogleFonts.robotoMono(
+        fontSize: 20,
+        fontWeight: FontWeight.w700,
+        color: AppColors.cyan,
+      ),
+      decoration: InputDecoration(
+        labelText: 'TIEFE',
+        labelStyle: GoogleFonts.robotoMono(
+          fontSize: 11,
+          color: AppColors.textMuted,
+          letterSpacing: 1.2,
+        ),
+        suffixText: 'm',
+        suffixStyle: GoogleFonts.robotoMono(
+          fontSize: 16,
+          color: AppColors.textSecondary,
+        ),
+        prefixIcon: const Icon(Icons.straighten, color: AppColors.cyan),
+      ),
+    );
+  }
+
+  Widget _buildNoteInput() {
+    return TextField(
+      controller: _noteController,
+      style: const TextStyle(color: AppColors.textPrimary),
+      decoration: const InputDecoration(
+        labelText: 'Notiz (optional)',
+        hintText: 'z. B. Kante, Schilf, Felsen',
+        prefixIcon: Icon(Icons.edit_note, color: AppColors.textMuted),
+      ),
+    );
+  }
+
+  Widget _buildSaveButton() {
+    return SizedBox(
+      width: double.infinity,
+      child: ElevatedButton.icon(
+        onPressed: _isLoading ? null : _savePoint,
+        icon: _isLoading
+            ? const SizedBox(
+                width: 20,
+                height: 20,
+                child: CircularProgressIndicator(strokeWidth: 2, color: AppColors.abyss),
+              )
+            : const Icon(Icons.save),
+        label: const Text('MESSPUNKT SPEICHERN'),
+      ),
+    );
+  }
+
+  Widget _buildRecentPoints() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: [
+            Text(
+              'LETZTE PUNKTE',
+              style: GoogleFonts.robotoMono(
+                fontSize: 11,
+                color: AppColors.textMuted,
+                fontWeight: FontWeight.w600,
+                letterSpacing: 1.2,
+              ),
+            ),
+            if (_lastPointNumber != null)
+              IconButton(
+                onPressed: _isLoading ? null : _duplicateLastPoint,
+                icon: const Icon(Icons.content_copy, size: 18),
+                tooltip: 'Letzten Punkt duplizieren',
+                color: AppColors.amber,
+                visualDensity: VisualDensity.compact,
+              ),
+          ],
+        ),
+        const SizedBox(height: 8),
+        ..._recentPoints.map((p) => _buildPointRow(p)),
+      ],
+    );
+  }
+
+  Widget _buildPointRow(DepthPoint p) {
+    return Container(
+      margin: const EdgeInsets.only(bottom: 8),
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+      decoration: BoxDecoration(
+        color: AppColors.deep,
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: AppColors.surfaceHighlight),
+      ),
+      child: Row(
+        children: [
+          Container(
+            width: 32,
+            height: 32,
+            decoration: BoxDecoration(
+              color: _getDepthColor(p.depthM),
+              shape: BoxShape.circle,
+              boxShadow: [
+                BoxShadow(
+                  color: _getDepthColor(p.depthM).withValues(alpha: 0.3),
+                  blurRadius: 8,
+                ),
+              ],
+            ),
+            child: Center(
+              child: Text(
+                '${p.pointNumber}',
+                style: GoogleFonts.robotoMono(
+                  fontSize: 10,
+                  fontWeight: FontWeight.w700,
+                  color: Colors.black,
+                ),
+              ),
+            ),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  '${p.depthM.toStringAsFixed(2)} m',
+                  style: const TextStyle(
+                    fontWeight: FontWeight.w700,
+                    color: AppColors.textPrimary,
+                    fontSize: 14,
+                  ),
+                ),
+                if (p.note != null)
+                  Text(
+                    p.note!,
+                    style: const TextStyle(
+                      fontSize: 12,
+                      color: AppColors.textSecondary,
+                    ),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+              ],
+            ),
+          ),
+          Text(
+            '${p.latitude.toStringAsFixed(4)}°  ${p.longitude.toStringAsFixed(4)}°',
+            style: GoogleFonts.robotoMono(
+              fontSize: 10,
+              color: AppColors.textMuted,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: Text('Lake Mapper${SyncService.instance.databaseName != 'default' ? ' • ${SyncService.instance.databaseName}' : ''}'),
+        title: const Text('Lake Mapper'),
         actions: [
           IconButton(
-            icon: _isSyncing 
-                ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2))
+            icon: _isSyncing
+                ? const SizedBox(
+                    width: 20,
+                    height: 20,
+                    child: CircularProgressIndicator(strokeWidth: 2, color: AppColors.cyan),
+                  )
                 : Icon(_isOnline ? Icons.cloud_done : Icons.cloud_off),
             onPressed: _isSyncing ? null : _sync,
             tooltip: _isOnline ? 'Sync' : 'Offline',
-          ),
-          IconButton(
-            icon: const Icon(Icons.file_download),
-            onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const ExportScreen())),
-          ),
-          IconButton(
-            icon: const Icon(Icons.map),
-            onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const MapScreen())),
-          ),
-          IconButton(
-            icon: const Icon(Icons.settings),
-            onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const SettingsScreen())),
+            color: _isOnline ? AppColors.cyan : AppColors.textMuted,
           ),
         ],
       ),
-      body: Column(
-        children: [
-          if (_syncStatus != null)
-            Container(
-              width: double.infinity,
-              padding: const EdgeInsets.all(8),
-              color: Colors.blue.shade100,
-              child: Text(_syncStatus!, style: const TextStyle(fontSize: 12)),
-            ),
-          Expanded(
-            child: SingleChildScrollView(
-              padding: const EdgeInsets.all(16),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  Card(
-                    child: Padding(
-                      padding: const EdgeInsets.all(16),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Row(
-                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                            children: [
-                              const Text('Aktuelle Position', style: TextStyle(fontWeight: FontWeight.bold)),
-                              if (_lastPointNumber != null)
-                                Text('#${_lastPointNumber}', style: TextStyle(color: Colors.grey.shade600)),
-                            ],
-                          ),
-                          const SizedBox(height: 8),
-                          if (_currentPosition != null) ...[
-                            Row(
-                              children: [
-                                Expanded(
-                                  child: Column(
-                                    crossAxisAlignment: CrossAxisAlignment.start,
-                                    children: [
-                                      Text('Lat: ${_currentPosition!.latitude.toStringAsFixed(6)}'),
-                                      Text('Lon: ${_currentPosition!.longitude.toStringAsFixed(6)}'),
-                                    ],
-                                  ),
-                                ),
-                                Column(
-                                  crossAxisAlignment: CrossAxisAlignment.end,
-                                  children: [
-                                    Text('Genauigkeit: ±${_currentPosition!.accuracy.toStringAsFixed(1)} m'),
-                                    if (_currentPosition!.accuracy > _accuracyWarningThreshold)
-                                      const Text('⚠️ Ungenau', style: TextStyle(color: Colors.orange, fontSize: 12)),
-                                  ],
-                                ),
-                              ],
-                            ),
-                          ] else if (_errorMessage != null) ...[
-                            Text(_errorMessage!, style: const TextStyle(color: Colors.red)),
-                            const SizedBox(height: 8),
-                            ElevatedButton(onPressed: _loadCurrentPosition, child: const Text('Erneut versuchen')),
-                          ] else
-                            const CircularProgressIndicator(),
-                        ],
-                      ),
+      body: SafeArea(
+        child: SingleChildScrollView(
+          padding: const EdgeInsets.all(16),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              if (_syncStatus != null)
+                Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 12),
+                  margin: const EdgeInsets.only(bottom: 12),
+                  decoration: BoxDecoration(
+                    color: AppColors.cyan.withValues(alpha: 0.1),
+                    borderRadius: BorderRadius.circular(8),
+                    border: Border.all(color: AppColors.cyan.withValues(alpha: 0.3)),
+                  ),
+                  child: Text(
+                    _syncStatus!,
+                    style: GoogleFonts.robotoMono(
+                      fontSize: 11,
+                      color: AppColors.cyan,
                     ),
                   ),
-                  const SizedBox(height: 16),
-                  TextField(
-                    controller: _depthController,
-                    keyboardType: const TextInputType.numberWithOptions(decimal: true),
-                    decoration: const InputDecoration(labelText: 'Tiefe (m)', border: OutlineInputBorder(), suffixText: 'm'),
-                  ),
-                  const SizedBox(height: 16),
-                  TextField(
-                    controller: _noteController,
-                    decoration: const InputDecoration(labelText: 'Notiz (optional)', border: OutlineInputBorder(), hintText: 'z.B. Kante, Schilf'),
-                  ),
-                  const SizedBox(height: 24),
-                  Row(
-                    children: [
-                      Expanded(
-                        child: ElevatedButton(
-                          onPressed: _isLoading ? null : _savePoint,
-                          style: ElevatedButton.styleFrom(padding: const EdgeInsets.all(16)),
-                          child: _isLoading ? const CircularProgressIndicator() : const Text('Messpunkt speichern'),
-                        ),
-                      ),
-                      if (_lastPointNumber != null) ...[
-                        const SizedBox(width: 8),
-                        IconButton(
-                          onPressed: _isLoading ? null : _duplicateLastPoint,
-                          icon: const Icon(Icons.content_copy),
-                          tooltip: 'Letzten Punkt duplizieren',
-                        ),
-                      ],
-                    ],
-                  ),
-                  if (_recentPoints.isNotEmpty) ...[
-                    const SizedBox(height: 24),
-                    const Text('Letzte Punkte', style: TextStyle(fontWeight: FontWeight.bold)),
-                    const SizedBox(height: 8),
-                    ..._recentPoints.map((p) => Card(
-                      child: ListTile(
-                        dense: true,
-                        leading: CircleAvatar(
-                          radius: 14,
-                          backgroundColor: _getDepthColor(p.depthM),
-                          child: Text(
-                            '${p.pointNumber}',
-                            style: const TextStyle(color: Colors.white, fontSize: 10),
-                          ),
-                        ),
-                        title: Text('${p.depthM.toStringAsFixed(2)} m${p.note != null ? ' • ${p.note}' : ''}'),
-                        subtitle: Text(
-                          '${p.latitude.toStringAsFixed(4)}, ${p.longitude.toStringAsFixed(4)}',
-                          style: const TextStyle(fontSize: 11),
-                        ),
-                      ),
-                    )),
-                  ],
-                ],
-              ),
-            ),
+                ),
+              _buildGpsCard(),
+              const SizedBox(height: 20),
+              _buildDepthInput(),
+              const SizedBox(height: 12),
+              _buildNoteInput(),
+              const SizedBox(height: 24),
+              _buildSaveButton(),
+              const SizedBox(height: 32),
+              if (_recentPoints.isNotEmpty) _buildRecentPoints(),
+            ],
           ),
-        ],
+        ),
       ),
     );
   }
