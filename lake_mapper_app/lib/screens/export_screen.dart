@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:google_fonts/google_fonts.dart';
 import '../database/app_database.dart';
 import '../services/export_service.dart';
 import '../theme/app_colors.dart';
@@ -147,7 +146,7 @@ class _ExportScreenState extends State<ExportScreen> {
                   children: [
                     Text(
                       'DATEN EXPORTIEREN',
-                      style: GoogleFonts.robotoMono(
+                      style: TextStyle(fontFamily: 'RobotoMono', 
                         fontSize: 11,
                         color: AppColors.textMuted,
                         fontWeight: FontWeight.w600,

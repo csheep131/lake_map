@@ -1,9 +1,9 @@
 import 'package:flutter/material.dart';
-import 'package:google_fonts/google_fonts.dart';
 import '../database/app_database.dart';
 import '../models/depth_point.dart';
 import '../models/lake.dart';
 import '../theme/app_colors.dart';
+import '../services/data_refresh_service.dart';
 import 'package:intl/intl.dart';
 
 class StatisticsScreen extends StatefulWidget {
@@ -22,6 +22,19 @@ class _StatisticsScreenState extends State<StatisticsScreen> {
   void initState() {
     super.initState();
     _loadData();
+    DataRefreshService.instance.addListener(_onRefresh);
+  }
+
+  void _onRefresh() {
+    if (mounted) {
+      _loadData();
+    }
+  }
+
+  @override
+  void dispose() {
+    DataRefreshService.instance.removeListener(_onRefresh);
+    super.dispose();
   }
 
   Future<void> _loadData() async {
@@ -108,7 +121,7 @@ class _StatisticsScreenState extends State<StatisticsScreen> {
             children: [
               Text(
                 'GESAMTÜBERSICHT',
-                style: GoogleFonts.robotoMono(
+                style: TextStyle(fontFamily: 'RobotoMono', 
                   fontSize: 11,
                   fontWeight: FontWeight.w600,
                   color: AppColors.textMuted,
@@ -124,7 +137,7 @@ class _StatisticsScreenState extends State<StatisticsScreen> {
                 ),
                 child: Text(
                   '$totalPoints Punkte',
-                  style: GoogleFonts.robotoMono(
+                  style: TextStyle(fontFamily: 'RobotoMono', 
                     fontSize: 11,
                     color: AppColors.cyan,
                     fontWeight: FontWeight.w700,
@@ -156,7 +169,7 @@ class _StatisticsScreenState extends State<StatisticsScreen> {
       children: [
         Text(
           value,
-          style: GoogleFonts.robotoMono(
+          style: TextStyle(fontFamily: 'RobotoMono', 
             fontSize: 18,
             fontWeight: FontWeight.w700,
             color: AppColors.textPrimary,
@@ -165,7 +178,7 @@ class _StatisticsScreenState extends State<StatisticsScreen> {
         const SizedBox(height: 4),
         Text(
           label,
-          style: GoogleFonts.robotoMono(
+          style: TextStyle(fontFamily: 'RobotoMono', 
             fontSize: 9,
             color: AppColors.textMuted,
             letterSpacing: 1,
@@ -228,7 +241,7 @@ class _StatisticsScreenState extends State<StatisticsScreen> {
                   children: [
                     Text(
                       '${entry.value}',
-                      style: GoogleFonts.robotoMono(
+                      style: TextStyle(fontFamily: 'RobotoMono', 
                         fontSize: 10,
                         color: AppColors.textSecondary,
                       ),
@@ -250,7 +263,7 @@ class _StatisticsScreenState extends State<StatisticsScreen> {
                     const SizedBox(height: 6),
                     Text(
                       entry.key,
-                      style: GoogleFonts.robotoMono(
+                      style: TextStyle(fontFamily: 'RobotoMono', 
                         fontSize: 9,
                         color: AppColors.textMuted,
                       ),
@@ -313,7 +326,7 @@ class _StatisticsScreenState extends State<StatisticsScreen> {
                 ),
                 child: Text(
                   '${points.length} Punkte',
-                  style: GoogleFonts.robotoMono(
+                  style: TextStyle(fontFamily: 'RobotoMono', 
                     fontSize: 11,
                     color: AppColors.cyan,
                     fontWeight: FontWeight.w700,
@@ -348,7 +361,7 @@ class _StatisticsScreenState extends State<StatisticsScreen> {
           ),
           Text(
             value,
-            style: GoogleFonts.robotoMono(
+            style: TextStyle(fontFamily: 'RobotoMono', 
               fontSize: 14,
               fontWeight: FontWeight.w600,
               color: AppColors.textPrimary,

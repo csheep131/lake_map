@@ -1,11 +1,17 @@
 import 'package:flutter/material.dart';
-import 'package:google_fonts/google_fonts.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'theme/app_theme.dart';
+import 'services/auth_service.dart';
 import 'widgets/main_shell.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
-  runApp(const LakeMapperApp());
+  await authService.loadSavedAuth();
+  runApp(
+    const ProviderScope(
+      child: LakeMapperApp(),
+    ),
+  );
 }
 
 class LakeMapperApp extends StatelessWidget {
@@ -14,11 +20,9 @@ class LakeMapperApp extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      title: 'Lake Mapper',
+      title: 'Wammsee App',
       debugShowCheckedModeBanner: false,
-      theme: AppTheme.darkTheme.copyWith(
-        textTheme: GoogleFonts.interTextTheme(AppTheme.darkTheme.textTheme),
-      ),
+      theme: AppTheme.darkTheme,
       home: const MainShell(),
     );
   }

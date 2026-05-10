@@ -4,10 +4,14 @@ import 'app_colors.dart';
 class AppTheme {
   AppTheme._();
 
+  static const String _fontFamily = 'Inter';
+  static const String _fontFamilyMono = 'RobotoMono';
+
   static ThemeData get darkTheme {
     return ThemeData(
       useMaterial3: true,
       brightness: Brightness.dark,
+      fontFamily: _fontFamily,
       scaffoldBackgroundColor: AppColors.abyss,
       colorScheme: const ColorScheme.dark(
         primary: AppColors.cyan,
@@ -31,6 +35,7 @@ class AppTheme {
           fontWeight: FontWeight.w700,
           letterSpacing: -0.5,
           color: AppColors.textPrimary,
+          fontFamily: _fontFamily,
         ),
       ),
       cardTheme: CardThemeData(
@@ -52,6 +57,7 @@ class AppTheme {
             fontSize: 16,
             fontWeight: FontWeight.w700,
             letterSpacing: 0.5,
+            fontFamily: _fontFamily,
           ),
         ),
       ),
@@ -64,13 +70,14 @@ class AppTheme {
           textStyle: const TextStyle(
             fontSize: 16,
             fontWeight: FontWeight.w600,
+            fontFamily: _fontFamily,
           ),
         ),
       ),
       textButtonTheme: TextButtonThemeData(
         style: TextButton.styleFrom(
           foregroundColor: AppColors.cyan,
-          textStyle: const TextStyle(fontWeight: FontWeight.w600),
+          textStyle: const TextStyle(fontWeight: FontWeight.w600, fontFamily: _fontFamily),
         ),
       ),
       inputDecorationTheme: InputDecorationTheme(
@@ -93,8 +100,8 @@ class AppTheme {
           borderRadius: BorderRadius.circular(10),
           borderSide: const BorderSide(color: AppColors.error),
         ),
-        labelStyle: const TextStyle(color: AppColors.textSecondary),
-        hintStyle: const TextStyle(color: AppColors.textMuted),
+        labelStyle: const TextStyle(color: AppColors.textSecondary, fontFamily: _fontFamily),
+        hintStyle: const TextStyle(color: AppColors.textMuted, fontFamily: _fontFamily),
       ),
       dividerTheme: const DividerThemeData(
         color: AppColors.surfaceHighlight,
@@ -107,12 +114,12 @@ class AppTheme {
         unselectedItemColor: AppColors.textMuted,
         type: BottomNavigationBarType.fixed,
         elevation: 8,
-        selectedLabelStyle: TextStyle(fontWeight: FontWeight.w600, fontSize: 11),
-        unselectedLabelStyle: TextStyle(fontWeight: FontWeight.w500, fontSize: 11),
+        selectedLabelStyle: TextStyle(fontWeight: FontWeight.w600, fontSize: 11, fontFamily: _fontFamily),
+        unselectedLabelStyle: TextStyle(fontWeight: FontWeight.w500, fontSize: 11, fontFamily: _fontFamily),
       ),
       snackBarTheme: SnackBarThemeData(
         backgroundColor: AppColors.surface,
-        contentTextStyle: const TextStyle(color: AppColors.textPrimary),
+        contentTextStyle: const TextStyle(color: AppColors.textPrimary, fontFamily: _fontFamily),
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
         behavior: SnackBarBehavior.floating,
       ),
@@ -126,41 +133,65 @@ class AppTheme {
           fontWeight: FontWeight.w900,
           color: AppColors.textPrimary,
           letterSpacing: -1.5,
+          fontFamily: _fontFamily,
         ),
         headlineLarge: TextStyle(
           fontSize: 28,
           fontWeight: FontWeight.w800,
           color: AppColors.textPrimary,
           letterSpacing: -0.5,
+          fontFamily: _fontFamily,
         ),
         headlineMedium: TextStyle(
           fontSize: 22,
           fontWeight: FontWeight.w700,
           color: AppColors.textPrimary,
           letterSpacing: -0.3,
+          fontFamily: _fontFamily,
         ),
         titleLarge: TextStyle(
           fontSize: 18,
           fontWeight: FontWeight.w700,
           color: AppColors.textPrimary,
+          fontFamily: _fontFamily,
         ),
         bodyLarge: TextStyle(
           fontSize: 16,
           fontWeight: FontWeight.w400,
           color: AppColors.textPrimary,
+          fontFamily: _fontFamily,
         ),
         bodyMedium: TextStyle(
           fontSize: 14,
           fontWeight: FontWeight.w400,
           color: AppColors.textSecondary,
+          fontFamily: _fontFamily,
         ),
         labelLarge: TextStyle(
           fontSize: 14,
           fontWeight: FontWeight.w600,
           color: AppColors.cyan,
           letterSpacing: 0.5,
+          fontFamily: _fontFamily,
         ),
       ),
+    );
+  }
+
+  // --- Cached mono text styles for performance ---
+  // Use these instead of GoogleFonts.robotoMono(...) in build methods
+  static TextStyle mono({
+    double fontSize = 12,
+    FontWeight fontWeight = FontWeight.w400,
+    Color color = AppColors.textPrimary,
+    double? letterSpacing,
+  }) {
+    return TextStyle(
+      fontFamily: _fontFamilyMono,
+      fontSize: fontSize,
+      fontWeight: fontWeight,
+      color: color,
+      letterSpacing: letterSpacing,
     );
   }
 }

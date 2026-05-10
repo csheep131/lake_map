@@ -27,6 +27,18 @@ class AppColors {
   static const Color textSecondary = Color(0xFF8BA3BE);
   static const Color textMuted = Color(0xFF4A6585);
 
+  // --- Premium Nautical ---
+  static const Color steelBlue = Color(0xFF4A6585);
+  static const Color navy = Color(0xFF0D1B2A);
+  static const Color navyDark = Color(0xFF081018);
+  static const Color glassBorder = Color(0x2600E5CC);
+  static const Color glassBackground = Color(0xB30A1929);
+  static const Color sonarBackground = Color(0xFF050F1A);
+  static const Color sonarGrid = Color(0xFF1B3352);
+  static const Color bottomNavBorder = Color(0x3300E5CC);
+  static const Color iconGlow = Color(0x4000E5CC);
+  static const Color compassGold = Color(0xFFFFB347);
+
   // --- Functional ---
   static const Color error = Color(0xFFFF5A5A);
   static const Color success = Color(0xFF39FF14);

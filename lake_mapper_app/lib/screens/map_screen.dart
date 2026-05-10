@@ -1,15 +1,17 @@
 import 'dart:math';
 import 'package:flutter/material.dart';
 import 'package:flutter_map/flutter_map.dart';
+
 import 'package:latlong2/latlong.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:intl/intl.dart';
-import 'package:google_fonts/google_fonts.dart';
 import '../database/app_database.dart';
 import '../models/depth_point.dart';
-import '../models/lake.dart';
+
 import '../theme/app_colors.dart';
 import '../data/wammsee_polygon.dart';
+import '../services/data_refresh_service.dart';
+import '../utils/geo_utils.dart';
 
 class MapScreen extends StatefulWidget {
   const MapScreen({super.key});
@@ -21,32 +23,45 @@ class MapScreen extends StatefulWidget {
 class _MapScreenState extends State<MapScreen> {
   final MapController _mapController = MapController();
   List<DepthPoint> _points = [];
-  List<Lake> _lakes = [];
-  Lake? _selectedLake;
   Position? _currentPosition;
   bool _isLoading = true;
   bool _abyssMode = false;
+  List<LatLng> _cachedGridPoints = [];
+  List<Polygon> _cachedDepthContours = [];
+  List<Polygon> _cachedAbyssDepthContours = [];
+  List<Polyline> _cachedConnectionLines = [];
+  List<Polyline> _cachedSonarGrid = [];
 
   static const _wammseeCenter = LatLng(49.346970, 8.446897);
 
   @override
   void initState() {
     super.initState();
+    _cachedGridPoints = _generateGridPoints();
     _loadData();
+    DataRefreshService.instance.addListener(_onRefresh);
+  }
+
+  void _onRefresh() {
+    if (mounted) {
+      _loadData();
+    }
+  }
+
+  @override
+  void dispose() {
+    DataRefreshService.instance.removeListener(_onRefresh);
+    super.dispose();
   }
 
   Future<void> _loadData() async {
     setState(() => _isLoading = true);
 
     try {
-      final lakes = await AppDatabase.instance.getAllLakes();
-      final selectedLake = _selectedLake ?? (lakes.isNotEmpty ? lakes.first : null);
-
+      final wammsee = await AppDatabase.instance.getOrCreateWammsee();
       List<DepthPoint> points = [];
-      if (selectedLake != null && selectedLake.id != null) {
-        points = await AppDatabase.instance.getDepthPointsForLake(selectedLake.id!);
-      } else {
-        points = await AppDatabase.instance.getAllDepthPoints();
+      if (wammsee.id != null) {
+        points = await AppDatabase.instance.getDepthPointsForLake(wammsee.id!);
       }
 
       Position? position;
@@ -61,9 +76,12 @@ class _MapScreenState extends State<MapScreen> {
         position = null;
       }
 
+      _cachedDepthContours = _buildDepthContourPolygons(points);
+      _cachedAbyssDepthContours = _buildAbyssDepthContourPolygons(points);
+      _cachedConnectionLines = _buildConnectionLines(points);
+      _cachedSonarGrid = _buildSonarGrid();
+
       setState(() {
-        _lakes = lakes;
-        _selectedLake = selectedLake;
         _points = points;
         _currentPosition = position;
         _isLoading = false;
@@ -122,7 +140,7 @@ class _MapScreenState extends State<MapScreen> {
   }
 
   // --- Build depth contour polygons from measured points ---
-  List<Polygon> _buildDepthContourPolygons() {
+  List<Polygon> _buildDepthContourPolygons(List<DepthPoint> points) {
     final contours = <Polygon>[];
     final buckets = <String, List<DepthPoint>>{
       'shallow': [],
@@ -132,7 +150,7 @@ class _MapScreenState extends State<MapScreen> {
       'abyss': [],
     };
 
-    for (final p in _points) {
+    for (final p in points) {
       if (p.depthM < 2) { buckets['shallow']!.add(p); }
       else if (p.depthM < 4) { buckets['midShallow']!.add(p); }
       else if (p.depthM < 6) { buckets['mid']!.add(p); }
@@ -166,6 +184,80 @@ class _MapScreenState extends State<MapScreen> {
     return contours;
   }
 
+  List<Polygon> _buildAbyssDepthContourPolygons(List<DepthPoint> points) {
+    final contours = <Polygon>[];
+    final buckets = <String, List<DepthPoint>>{
+      'shallow': [],
+      'midShallow': [],
+      'mid': [],
+      'deep': [],
+      'abyss': [],
+    };
+
+    for (final p in points) {
+      if (p.depthM < 2) { buckets['shallow']!.add(p); }
+      else if (p.depthM < 4) { buckets['midShallow']!.add(p); }
+      else if (p.depthM < 6) { buckets['mid']!.add(p); }
+      else if (p.depthM < 8) { buckets['deep']!.add(p); }
+      else { buckets['abyss']!.add(p); }
+    }
+
+    final colors = [
+      AppColors.depthShallow,
+      AppColors.depthMidShallow,
+      AppColors.depthMid,
+      AppColors.depthDeep,
+      AppColors.depthAbyss,
+    ];
+
+    var i = 0;
+    for (final entry in buckets.entries) {
+      final pts = entry.value;
+      if (pts.length >= 3) {
+        final latLngs = pts.map((p) => LatLng(p.latitude, p.longitude)).toList();
+        final sorted = _sortByAngleAroundCentroid(latLngs);
+        contours.add(Polygon(
+          points: sorted,
+          color: colors[i].withValues(alpha: 0.45),
+          borderStrokeWidth: 2.5,
+          borderColor: colors[i].withValues(alpha: 0.85),
+        ));
+      }
+      i++;
+    }
+    return contours;
+  }
+
+  List<Polyline> _buildSonarGrid() {
+    final bounds = _polygonBounds(wammseePolygon);
+    final lines = <Polyline>[];
+    const steps = 12;
+    final dLat = (bounds['maxLat']! - bounds['minLat']!) / steps;
+    final dLon = (bounds['maxLon']! - bounds['minLon']!) / steps;
+
+    for (int i = 0; i <= steps; i++) {
+      final lat = bounds['minLat']! + i * dLat;
+      final lon = bounds['minLon']! + i * dLon;
+      lines.add(Polyline(
+        points: [
+          LatLng(lat, bounds['minLon']!),
+          LatLng(lat, bounds['maxLon']!),
+        ],
+        color: AppColors.sonarGrid.withValues(alpha: 0.15),
+        strokeWidth: 0.5,
+      ));
+      lines.add(Polyline(
+        points: [
+          LatLng(bounds['minLat']!, lon),
+          LatLng(bounds['maxLat']!, lon),
+        ],
+        color: AppColors.sonarGrid.withValues(alpha: 0.15),
+        strokeWidth: 0.5,
+      ));
+    }
+    return lines;
+  }
+
   List<LatLng> _sortByAngleAroundCentroid(List<LatLng> points) {
     double cLat = 0, cLon = 0;
     for (final p in points) {
@@ -185,19 +277,19 @@ class _MapScreenState extends State<MapScreen> {
   }
 
   // --- Connection lines for abyss mode ---
-  List<Polyline> _buildConnectionLines() {
+  List<Polyline> _buildConnectionLines(List<DepthPoint> points) {
     final lines = <Polyline>[];
-    if (_points.length < 2) return lines;
+    if (points.length < 2) return lines;
 
     // Connect each point to its 2 nearest neighbors
-    for (int i = 0; i < _points.length; i++) {
-      final neighbors = _findNearestNeighbors(i, 2);
+    for (int i = 0; i < points.length; i++) {
+      final neighbors = _findNearestNeighbors(points, i, 2);
       for (final n in neighbors) {
         if (i < n) { // avoid duplicates
           lines.add(Polyline(
             points: [
-              LatLng(_points[i].latitude, _points[i].longitude),
-              LatLng(_points[n].latitude, _points[n].longitude),
+              LatLng(points[i].latitude, points[i].longitude),
+              LatLng(points[n].latitude, points[n].longitude),
             ],
             color: AppColors.cyan.withValues(alpha: 0.08),
             strokeWidth: 1,
@@ -208,12 +300,12 @@ class _MapScreenState extends State<MapScreen> {
     return lines;
   }
 
-  List<int> _findNearestNeighbors(int index, int count) {
+  List<int> _findNearestNeighbors(List<DepthPoint> points, int index, int count) {
     final distances = <(int, double)>[];
-    final p1 = _points[index];
-    for (int j = 0; j < _points.length; j++) {
+    final p1 = points[index];
+    for (int j = 0; j < points.length; j++) {
       if (j == index) continue;
-      final p2 = _points[j];
+      final p2 = points[j];
       final d = (p1.latitude - p2.latitude) * (p1.latitude - p2.latitude) +
                 (p1.longitude - p2.longitude) * (p1.longitude - p2.longitude);
       distances.add((j, d));
@@ -223,6 +315,33 @@ class _MapScreenState extends State<MapScreen> {
   }
 
   void _onMapTap(TapPosition tapPosition, LatLng latlng) {
+    // Check if tapped near an existing point (approx 30m threshold in degrees)
+    const thresholdDeg = 0.0003;
+    DepthPoint? nearestPoint;
+    double nearestDist = double.infinity;
+    for (final p in _points) {
+      final d = (p.latitude - latlng.latitude) * (p.latitude - latlng.latitude) +
+                (p.longitude - latlng.longitude) * (p.longitude - latlng.longitude);
+      if (d < nearestDist) {
+        nearestDist = d;
+        nearestPoint = p;
+      }
+    }
+
+    if (nearestPoint != null && nearestDist < thresholdDeg * thresholdDeg) {
+      _showPointInfo(nearestPoint);
+      return;
+    }
+
+    if (!isPointInPolygon(latlng, wammseePolygon)) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Messpunkte können nur innerhalb des Wammsee eingetragen werden'),
+          backgroundColor: AppColors.amber,
+        ),
+      );
+      return;
+    }
     _showSaveDepthDialog(latlng);
   }
 
@@ -246,14 +365,14 @@ class _MapScreenState extends State<MapScreen> {
               ),
               child: Text(
                 '${position.latitude.toStringAsFixed(6)}\n${position.longitude.toStringAsFixed(6)}',
-                style: GoogleFonts.robotoMono(fontSize: 12, color: AppColors.cyan),
+                style: TextStyle(fontFamily: 'RobotoMono', fontSize: 12, color: AppColors.cyan),
               ),
             ),
             const SizedBox(height: 16),
             TextField(
               controller: depthController,
               keyboardType: const TextInputType.numberWithOptions(decimal: true),
-              style: GoogleFonts.robotoMono(fontSize: 18, color: AppColors.cyan, fontWeight: FontWeight.w700),
+              style: TextStyle(fontFamily: 'RobotoMono', fontSize: 18, color: AppColors.cyan, fontWeight: FontWeight.w700),
               decoration: const InputDecoration(labelText: 'Tiefe', suffixText: 'm', hintText: 'z. B. 3.5'),
               autofocus: true,
             ),
@@ -300,50 +419,95 @@ class _MapScreenState extends State<MapScreen> {
         note: result['note'],
         createdAt: DateTime.now(),
       );
-      await AppDatabase.instance.insertDepthPoint(point);
-      _loadData();
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Messpunkt gespeichert')),
-        );
+      
+      // Mit Fehlerbehandlung
+      try {
+        await AppDatabase.instance.insertDepthPoint(point);
+        _loadData();
+        DataRefreshService.instance.refresh();
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Messpunkt gespeichert')),
+          );
+        }
+      } catch (e) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('Fehler beim Speichern: $e')),
+          );
+        }
       }
     }
   }
 
   @override
   Widget build(BuildContext context) {
-    final gridPoints = _generateGridPoints();
-    final depthContours = _buildDepthContourPolygons();
-    final connectionLines = _buildConnectionLines();
-
     return Scaffold(
       appBar: AppBar(
-        title: GestureDetector(
-          onTap: _showLakeSelector,
-          child: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Text(_selectedLake?.name ?? 'Alle Seen'),
-              const Icon(Icons.arrow_drop_down, color: AppColors.cyan),
-            ],
+        automaticallyImplyLeading: false,
+        elevation: 0,
+        scrolledUnderElevation: 0,
+        backgroundColor: Colors.transparent,
+        flexibleSpace: Container(
+          decoration: BoxDecoration(
+            gradient: LinearGradient(
+              begin: Alignment.topCenter,
+              end: Alignment.bottomCenter,
+              colors: [
+                AppColors.surface,
+                AppColors.deep,
+                AppColors.abyss,
+              ],
+              stops: const [0.0, 0.6, 1.0],
+            ),
+            border: Border(
+              bottom: BorderSide(
+                color: AppColors.cyan.withValues(alpha: 0.35),
+                width: 1,
+              ),
+            ),
+          ),
+        ),
+        title: Text(
+          'Wammsee',
+          style: TextStyle(
+            fontFamily: 'RobotoMono',
+            fontSize: 22,
+            fontWeight: FontWeight.w900,
+            color: AppColors.textPrimary,
+            letterSpacing: 0.5,
           ),
         ),
         actions: [
-          IconButton(
-            icon: Icon(_abyssMode ? Icons.light_mode : Icons.opacity),
-            onPressed: () => setState(() => _abyssMode = !_abyssMode),
-            tooltip: _abyssMode ? 'Kartenmodus' : 'Tiefenprofil',
-            color: _abyssMode ? AppColors.amber : AppColors.textSecondary,
+          Padding(
+            padding: const EdgeInsets.only(right: 4),
+            child: _glassIconButton(
+              icon: _abyssMode ? Icons.explore : Icons.opacity,
+              onPressed: () => setState(() => _abyssMode = !_abyssMode),
+              tooltip: _abyssMode ? 'Kartenmodus' : 'Tiefenprofil',
+              accentColor: _abyssMode ? AppColors.amber : AppColors.cyan,
+              isActive: _abyssMode,
+            ),
           ),
-          IconButton(
-            icon: const Icon(Icons.info_outline),
-            onPressed: _showLegend,
-            color: AppColors.textSecondary,
+          Padding(
+            padding: const EdgeInsets.only(right: 4),
+            child: _glassIconButton(
+              icon: Icons.info_outline,
+              onPressed: _showLegend,
+              tooltip: 'Legende',
+              accentColor: AppColors.textSecondary,
+              isActive: false,
+            ),
           ),
-          IconButton(
-            icon: const Icon(Icons.refresh),
-            onPressed: _loadData,
-            color: AppColors.cyan,
+          Padding(
+            padding: const EdgeInsets.only(right: 12),
+            child: _glassIconButton(
+              icon: Icons.refresh,
+              onPressed: _loadData,
+              tooltip: 'Aktualisieren',
+              accentColor: AppColors.cyan,
+              isActive: false,
+            ),
           ),
         ],
       ),
@@ -351,7 +515,46 @@ class _MapScreenState extends State<MapScreen> {
           ? const Center(child: CircularProgressIndicator(color: AppColors.cyan))
           : Stack(
               children: [
-                if (_abyssMode) Container(color: AppColors.abyss),
+                // Abyss / Bathymetry mode background
+                if (_abyssMode)
+                  Container(
+                    decoration: BoxDecoration(
+                      gradient: LinearGradient(
+                        begin: Alignment.topCenter,
+                        end: Alignment.bottomCenter,
+                        colors: [
+                          AppColors.sonarBackground,
+                          AppColors.navyDark,
+                          AppColors.abyss,
+                        ],
+                      ),
+                    ),
+                    alignment: Alignment.center,
+                    child: _points.isEmpty
+                        ? Column(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Icon(Icons.water, size: 48, color: AppColors.textMuted),
+                              const SizedBox(height: 16),
+                              Text(
+                                'Noch keine Tiefenmessungen',
+                                style: TextStyle(
+                                  color: AppColors.textMuted,
+                                  fontSize: 16,
+                                ),
+                              ),
+                              const SizedBox(height: 8),
+                              Text(
+                                'Tippe auf die Karte um Punkte zu messen',
+                                style: TextStyle(
+                                  color: AppColors.textSecondary,
+                                  fontSize: 12,
+                                ),
+                              ),
+                            ],
+                          )
+                        : null,
+                  ),
                 FlutterMap(
                   mapController: _mapController,
                   options: MapOptions(
@@ -360,63 +563,92 @@ class _MapScreenState extends State<MapScreen> {
                         : _wammseeCenter,
                     initialZoom: 15,
                     onTap: _onMapTap,
+                    interactionOptions: const InteractionOptions(
+                      flags: InteractiveFlag.all,
+                    ),
+                    backgroundColor: _abyssMode ? Colors.transparent : const Color(0xFFF5F5F5),
                   ),
                   children: [
+                    // OSM tiles only in map mode
                     if (!_abyssMode)
                       TileLayer(
-                        urlTemplate: 'https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png',
-                        subdomains: const ['a', 'b', 'c', 'd'],
+                        urlTemplate: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
                         userAgentPackageName: 'de.tom.wammsee_mapper',
                       ),
 
-                    // Water dot texture
+                    // Water dot texture (map mode only)
                     if (!_abyssMode)
                       CircleLayer(
-                        circles: gridPoints.map((p) => CircleMarker(
+                        circles: _cachedGridPoints.map((p) => CircleMarker(
                           point: p,
                           radius: 1.2,
                           color: AppColors.cyan.withValues(alpha: 0.15),
                         )).toList(),
                       ),
 
-                    // Depth contour polygons
-                    if (_points.length >= 3)
-                      PolygonLayer(polygons: depthContours),
+                    // Sonar grid (abyss mode only)
+                    if (_abyssMode && _cachedSonarGrid.isNotEmpty)
+                      PolylineLayer(polylines: _cachedSonarGrid),
+
+                    // Depth contour polygons (map mode)
+                    if (!_abyssMode && _points.length >= 3)
+                      PolygonLayer(polygons: _cachedDepthContours),
+
+                    // Bathymetry depth zones (abyss mode)
+                    if (_abyssMode && _points.length >= 3)
+                      PolygonLayer(polygons: _cachedAbyssDepthContours),
 
                     // Connection lines for abyss mode
-                    if (_abyssMode && connectionLines.isNotEmpty)
-                      PolylineLayer(polylines: connectionLines),
+                    if (_abyssMode && _cachedConnectionLines.isNotEmpty)
+                      PolylineLayer(polylines: _cachedConnectionLines),
 
-                    // Lake polygon with glow layers
+                    // Lake polygon outline - abyss mode (bright sonar-style)
+                    if (_abyssMode)
+                      PolygonLayer(
+                        polygons: [
+                          Polygon(
+                            points: wammseePolygon,
+                            color: Colors.transparent,
+                            borderStrokeWidth: 10,
+                            borderColor: AppColors.cyan.withValues(alpha: 0.12),
+                          ),
+                          Polygon(
+                            points: wammseePolygon,
+                            color: Colors.transparent,
+                            borderStrokeWidth: 5,
+                            borderColor: AppColors.cyan.withValues(alpha: 0.35),
+                          ),
+                          Polygon(
+                            points: wammseePolygon,
+                            color: Colors.transparent,
+                            borderStrokeWidth: 2,
+                            borderColor: AppColors.cyan.withValues(alpha: 0.9),
+                          ),
+                        ],
+                      ),
+
+                    // Lake polygon outline - map mode
                     if (!_abyssMode)
                       PolygonLayer(
                         polygons: [
-                          // Outer glow
                           Polygon(
                             points: wammseePolygon,
                             color: Colors.transparent,
                             borderStrokeWidth: 8,
                             borderColor: AppColors.cyan.withValues(alpha: 0.08),
                           ),
-                          // Mid glow
                           Polygon(
                             points: wammseePolygon,
                             color: Colors.transparent,
                             borderStrokeWidth: 4,
                             borderColor: AppColors.cyan.withValues(alpha: 0.2),
                           ),
-                          // Core line
                           Polygon(
                             points: wammseePolygon,
                             color: AppColors.cyan.withValues(alpha: 0.08),
                             borderStrokeWidth: 2,
                             borderColor: AppColors.cyan.withValues(alpha: 0.7),
                           ),
-                        ],
-                      )
-                    else
-                      PolygonLayer(
-                        polygons: [
                           Polygon(
                             points: wammseePolygon,
                             color: Colors.transparent,
@@ -435,11 +667,13 @@ class _MapScreenState extends State<MapScreen> {
                           height: 60,
                           child: Center(
                             child: Text(
-                              _selectedLake?.name.toUpperCase() ?? 'WAMMSEE',
-                              style: GoogleFonts.robotoMono(
+                              'WAMMSEE',
+                              style: TextStyle(fontFamily: 'RobotoMono',
                                 fontSize: 22,
                                 fontWeight: FontWeight.w900,
-                                color: AppColors.cyan.withValues(alpha: 0.25),
+                                color: _abyssMode
+                                    ? AppColors.cyan.withValues(alpha: 0.15)
+                                    : AppColors.cyan.withValues(alpha: 0.25),
                                 letterSpacing: 4,
                               ),
                             ),
@@ -453,34 +687,31 @@ class _MapScreenState extends State<MapScreen> {
                       markers: [
                         ..._points.map((point) => Marker(
                               point: LatLng(point.latitude, point.longitude),
-                              width: _abyssMode ? 36 : 28,
-                              height: _abyssMode ? 36 : 28,
-                              child: GestureDetector(
-                                onTap: () => _showPointInfo(point),
-                                child: Container(
-                                  decoration: BoxDecoration(
-                                    color: _getDepthColor(point.depthM),
-                                    shape: BoxShape.circle,
-                                    border: Border.all(
-                                      color: _abyssMode ? AppColors.textPrimary : AppColors.abyss,
-                                      width: _abyssMode ? 2 : 1.5,
-                                    ),
-                                    boxShadow: [
-                                      BoxShadow(
-                                        color: _getDepthColor(point.depthM).withValues(alpha: _abyssMode ? 0.7 : 0.4),
-                                        blurRadius: _abyssMode ? 16 : 8,
-                                        spreadRadius: _abyssMode ? 4 : 1,
-                                      ),
-                                    ],
+                              width: _abyssMode ? 40 : 28,
+                              height: _abyssMode ? 40 : 28,
+                              child: Container(
+                                decoration: BoxDecoration(
+                                  color: _getDepthColor(point.depthM),
+                                  shape: BoxShape.circle,
+                                  border: Border.all(
+                                    color: _abyssMode ? AppColors.textPrimary : AppColors.abyss,
+                                    width: _abyssMode ? 2.5 : 1.5,
                                   ),
-                                  child: Center(
-                                    child: Text(
-                                      '${point.pointNumber ?? "?"}',
-                                      style: GoogleFonts.robotoMono(
-                                        color: Colors.black,
-                                        fontSize: _abyssMode ? 10 : 9,
-                                        fontWeight: FontWeight.w900,
-                                      ),
+                                  boxShadow: [
+                                    BoxShadow(
+                                      color: _getDepthColor(point.depthM).withValues(alpha: _abyssMode ? 0.9 : 0.4),
+                                      blurRadius: _abyssMode ? 20 : 8,
+                                      spreadRadius: _abyssMode ? 5 : 1,
+                                    ),
+                                  ],
+                                ),
+                                child: Center(
+                                  child: Text(
+                                    '${point.pointNumber ?? "?"}',
+                                    style: TextStyle(fontFamily: 'RobotoMono',
+                                      color: Colors.black,
+                                      fontSize: _abyssMode ? 11 : 9,
+                                      fontWeight: FontWeight.w900,
                                     ),
                                   ),
                                 ),
@@ -507,26 +738,100 @@ class _MapScreenState extends State<MapScreen> {
                   ],
                 ),
 
+                // Bathymetry legend overlay (abyss mode only)
+                if (_abyssMode && _points.isNotEmpty)
+                  Positioned(
+                    top: 12,
+                    right: 12,
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                      decoration: BoxDecoration(
+                        color: AppColors.navyDark.withValues(alpha: 0.85),
+                        borderRadius: BorderRadius.circular(12),
+                        border: Border.all(
+                          color: AppColors.cyan.withValues(alpha: 0.2),
+                          width: 1,
+                        ),
+                        boxShadow: [
+                          BoxShadow(
+                            color: AppColors.abyss.withValues(alpha: 0.6),
+                            blurRadius: 16,
+                            spreadRadius: 2,
+                          ),
+                        ],
+                      ),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Text(
+                            'TIEFE',
+                            style: TextStyle(
+                              fontFamily: 'RobotoMono',
+                              fontSize: 9,
+                              fontWeight: FontWeight.w700,
+                              color: AppColors.textMuted,
+                              letterSpacing: 1.2,
+                            ),
+                          ),
+                          const SizedBox(height: 8),
+                          _legendItem('< 2 m', AppColors.depthShallow),
+                          _legendItem('2–4 m', AppColors.depthMidShallow),
+                          _legendItem('4–6 m', AppColors.depthMid),
+                          _legendItem('6–8 m', AppColors.depthDeep),
+                          _legendItem('> 8 m', AppColors.depthAbyss),
+                        ],
+                      ),
+                    ),
+                  ),
+
                 // FAB control bar
                 Positioned(
                   left: 16,
                   right: 16,
                   bottom: 24,
                   child: Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
+                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
                     decoration: BoxDecoration(
-                      color: AppColors.deep.withValues(alpha: 0.95),
-                      borderRadius: BorderRadius.circular(16),
-                      border: Border.all(color: AppColors.surfaceHighlight),
-                      boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.5), blurRadius: 24)],
+                      color: AppColors.deep.withValues(alpha: 0.72),
+                      borderRadius: BorderRadius.circular(20),
+                      border: Border.all(
+                        color: AppColors.cyan.withValues(alpha: 0.18),
+                        width: 1,
+                      ),
+                      boxShadow: [
+                        BoxShadow(
+                          color: AppColors.abyss.withValues(alpha: 0.7),
+                          blurRadius: 32,
+                          spreadRadius: 4,
+                          offset: const Offset(0, -4),
+                        ),
+                        BoxShadow(
+                          color: AppColors.cyan.withValues(alpha: 0.06),
+                          blurRadius: 20,
+                          spreadRadius: 0,
+                          offset: const Offset(0, -2),
+                        ),
+                      ],
                     ),
                     child: Row(
                       mainAxisAlignment: MainAxisAlignment.spaceEvenly,
                       children: [
-                        _mapFAB(Icons.download, 'Cache', _downloadWammseeTiles),
-                        _mapFAB(Icons.my_location, 'GPS', _saveCurrentLocation),
+                        _mapFAB(
+                          Icons.my_location,
+                          'GPS',
+                          (_currentPosition != null && isPointInPolygon(LatLng(_currentPosition!.latitude, _currentPosition!.longitude), wammseePolygon))
+                              ? _saveCurrentLocation
+                              : null,
+                          disabledTooltip: 'Außerhalb',
+                        ),
                         _mapFAB(Icons.center_focus_strong, 'Zentrum', _centerOnWammsee),
-                        _mapFAB(Icons.add_location, 'Hinzufügen', () => _showSaveDepthDialog(_wammseeCenter)),
+                        _mapFAB(
+                          Icons.add_location,
+                          'Hinzufügen',
+                          () => _showSaveDepthDialog(_wammseeCenter),
+                          isPrimary: true,
+                        ),
                       ],
                     ),
                   ),
@@ -536,24 +841,75 @@ class _MapScreenState extends State<MapScreen> {
     );
   }
 
-  Widget _mapFAB(IconData icon, String tooltip, VoidCallback onPressed) {
+  Widget _mapFAB(IconData icon, String tooltip, VoidCallback? onPressed, {String? disabledTooltip, bool isPrimary = false}) {
+    final isDisabled = onPressed == null;
+    final iconColor = isDisabled
+        ? AppColors.textMuted.withValues(alpha: 0.4)
+        : isPrimary
+            ? AppColors.cyan
+            : AppColors.cyan.withValues(alpha: 0.85);
+    final bgColor = isDisabled
+        ? AppColors.abyss.withValues(alpha: 0.5)
+        : isPrimary
+            ? AppColors.cyan.withValues(alpha: 0.12)
+            : Colors.white.withValues(alpha: 0.05);
+    final borderColor = isDisabled
+        ? AppColors.surfaceHighlight.withValues(alpha: 0.15)
+        : isPrimary
+            ? AppColors.cyan.withValues(alpha: 0.4)
+            : AppColors.cyan.withValues(alpha: 0.15);
+    final glowColor = isDisabled
+        ? Colors.transparent
+        : isPrimary
+            ? AppColors.cyan.withValues(alpha: 0.25)
+            : AppColors.cyan.withValues(alpha: 0.08);
+
     return Column(
       mainAxisSize: MainAxisSize.min,
       children: [
-        FloatingActionButton.small(
-          heroTag: tooltip,
-          onPressed: onPressed,
-          backgroundColor: AppColors.surface,
-          foregroundColor: AppColors.cyan,
-          elevation: 0,
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(12),
-            side: const BorderSide(color: AppColors.surfaceHighlight),
+        Container(
+          decoration: BoxDecoration(
+            shape: BoxShape.circle,
+            boxShadow: [
+              BoxShadow(
+                color: glowColor,
+                blurRadius: isPrimary ? 14 : 8,
+                spreadRadius: isPrimary ? 2 : 0,
+              ),
+            ],
           ),
-          child: Icon(icon),
+          child: Material(
+            color: bgColor,
+            shape: CircleBorder(
+              side: BorderSide(color: borderColor, width: 1),
+            ),
+            clipBehavior: Clip.antiAlias,
+            child: InkWell(
+              onTap: onPressed,
+              splashColor: AppColors.cyan.withValues(alpha: 0.15),
+              highlightColor: AppColors.cyan.withValues(alpha: 0.08),
+              child: SizedBox(
+                width: isPrimary ? 52 : 46,
+                height: isPrimary ? 52 : 46,
+                child: Icon(icon, size: isPrimary ? 24 : 22, color: iconColor),
+              ),
+            ),
+          ),
         ),
-        const SizedBox(height: 4),
-        Text(tooltip, style: GoogleFonts.robotoMono(fontSize: 9, color: AppColors.textMuted)),
+        const SizedBox(height: 6),
+        Text(
+          isDisabled ? (disabledTooltip ?? tooltip) : tooltip,
+          style: TextStyle(
+            fontFamily: 'RobotoMono',
+            fontSize: 9,
+            letterSpacing: 0.3,
+            color: isDisabled
+                ? AppColors.textMuted.withValues(alpha: 0.35)
+                : isPrimary
+                    ? AppColors.cyan.withValues(alpha: 0.9)
+                    : AppColors.textMuted.withValues(alpha: 0.8),
+          ),
+        ),
       ],
     );
   }
@@ -565,7 +921,7 @@ class _MapScreenState extends State<MapScreen> {
       builder: (context) => AlertDialog(
         title: Text(
           '#${point.pointNumber ?? "?"} · ${point.depthM.toStringAsFixed(2)} m',
-          style: GoogleFonts.robotoMono(fontWeight: FontWeight.w700, color: AppColors.cyan),
+          style: TextStyle(fontFamily: 'RobotoMono', fontWeight: FontWeight.w700, color: AppColors.cyan),
         ),
         content: Column(
           mainAxisSize: MainAxisSize.min,
@@ -599,10 +955,10 @@ class _MapScreenState extends State<MapScreen> {
         children: [
           SizedBox(
             width: 50,
-            child: Text(label, style: GoogleFonts.robotoMono(fontSize: 10, color: AppColors.textMuted, fontWeight: FontWeight.w600)),
+            child: Text(label, style: TextStyle(fontFamily: 'RobotoMono', fontSize: 10, color: AppColors.textMuted, fontWeight: FontWeight.w600)),
           ),
           Expanded(
-            child: Text(value, style: GoogleFonts.robotoMono(fontSize: 12, color: AppColors.textPrimary)),
+            child: Text(value, style: TextStyle(fontFamily: 'RobotoMono', fontSize: 12, color: AppColors.textPrimary)),
           ),
         ],
       ),
@@ -629,6 +985,7 @@ class _MapScreenState extends State<MapScreen> {
     if (confirm == true) {
       await AppDatabase.instance.deleteDepthPoint(point.id!);
       _loadData();
+      DataRefreshService.instance.refresh();
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Punkt gelöscht')));
       }
@@ -649,7 +1006,7 @@ class _MapScreenState extends State<MapScreen> {
             TextField(
               controller: depthController,
               keyboardType: const TextInputType.numberWithOptions(decimal: true),
-              style: GoogleFonts.robotoMono(fontSize: 18, color: AppColors.cyan, fontWeight: FontWeight.w700),
+              style: TextStyle(fontFamily: 'RobotoMono', fontSize: 18, color: AppColors.cyan, fontWeight: FontWeight.w700),
               decoration: const InputDecoration(labelText: 'Tiefe (m)', suffixText: 'm'),
             ),
             const SizedBox(height: 12),
@@ -677,6 +1034,7 @@ class _MapScreenState extends State<MapScreen> {
       final updated = point.copyWith(depthM: result['depthM'], note: result['note']);
       await AppDatabase.instance.updateDepthPoint(updated);
       _loadData();
+      DataRefreshService.instance.refresh();
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Punkt aktualisiert')));
       }
@@ -695,7 +1053,17 @@ class _MapScreenState extends State<MapScreen> {
         );
       }
       if (mounted) {
-        _showSaveDepthDialog(LatLng(position.latitude, position.longitude));
+        final latLng = LatLng(position.latitude, position.longitude);
+        if (!isPointInPolygon(latLng, wammseePolygon)) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('GPS-Position liegt außerhalb des Wammsee'),
+              backgroundColor: AppColors.amber,
+            ),
+          );
+          return;
+        }
+        _showSaveDepthDialog(latLng);
       }
     } catch (e) {
       if (mounted) {
@@ -708,95 +1076,6 @@ class _MapScreenState extends State<MapScreen> {
 
   void _centerOnWammsee() {
     _mapController.move(_wammseeCenter, 16);
-  }
-
-  Future<void> _showLakeSelector() async {
-    final result = await showDialog<Lake>(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('See auswählen'),
-        content: SizedBox(
-          width: double.maxFinite,
-          child: ListView(
-            shrinkWrap: true,
-            children: [
-              ListTile(
-                title: const Text('Alle Seen'),
-                selected: _selectedLake == null,
-                onTap: () => Navigator.pop(context, null),
-              ),
-              ..._lakes.map((lake) => ListTile(
-                    title: Text(lake.name),
-                    selected: _selectedLake?.id == lake.id,
-                    onTap: () => Navigator.pop(context, lake),
-                  )),
-              const Divider(),
-              ListTile(
-                leading: const Icon(Icons.add, color: AppColors.cyan),
-                title: const Text('Neuen See hinzufügen'),
-                onTap: () => _addNewLake(context),
-              ),
-            ],
-          ),
-        ),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(context), child: const Text('Schließen')),
-        ],
-      ),
-    );
-
-    if (result != null && (_selectedLake?.id != result.id)) {
-      setState(() => _selectedLake = result);
-      _loadData();
-    }
-  }
-
-  Future<void> _addNewLake(BuildContext dialogContext) async {
-    final nameController = TextEditingController();
-    final result = await showDialog<String>(
-      context: dialogContext,
-      builder: (context) => AlertDialog(
-        title: const Text('Neuen See anlegen'),
-        content: TextField(
-          controller: nameController,
-          decoration: const InputDecoration(labelText: 'Name', hintText: 'z. B. Mümmelsee'),
-          autofocus: true,
-        ),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(context), child: const Text('Abbrechen')),
-          TextButton(
-            onPressed: () {
-              if (nameController.text.isNotEmpty) {
-                Navigator.pop(context, nameController.text);
-              }
-            },
-            child: const Text('Anlegen'),
-          ),
-        ],
-      ),
-    );
-
-    if (result != null) {
-      final newLake = Lake(name: result, createdAt: DateTime.now());
-      await AppDatabase.instance.insertLake(newLake);
-      if (context.mounted) {
-        Navigator.pop(dialogContext);
-        _loadData();
-      }
-    }
-  }
-
-  Future<void> _downloadWammseeTiles() async {
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('Bereich ansehen zum Cachen...')),
-    );
-    _mapController.move(_wammseeCenter, 15);
-    await Future.delayed(const Duration(seconds: 3));
-    if (mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Bereich gecacht für Offline-Nutzung')),
-      );
-    }
   }
 
   void _showLegend() {
@@ -817,6 +1096,57 @@ class _MapScreenState extends State<MapScreen> {
         actions: [
           TextButton(onPressed: () => Navigator.pop(context), child: const Text('Schließen')),
         ],
+      ),
+    );
+  }
+
+  Widget _glassIconButton({
+    required IconData icon,
+    required VoidCallback onPressed,
+    required String tooltip,
+    required Color accentColor,
+    required bool isActive,
+  }) {
+    return Tooltip(
+      message: tooltip,
+      child: Container(
+        width: 40,
+        height: 40,
+        decoration: BoxDecoration(
+          color: isActive
+              ? accentColor.withValues(alpha: 0.15)
+              : Colors.white.withValues(alpha: 0.04),
+          shape: BoxShape.circle,
+          border: Border.all(
+            color: isActive
+                ? accentColor.withValues(alpha: 0.5)
+                : Colors.white.withValues(alpha: 0.08),
+            width: 1,
+          ),
+          boxShadow: isActive
+              ? [
+                  BoxShadow(
+                    color: accentColor.withValues(alpha: 0.2),
+                    blurRadius: 12,
+                    spreadRadius: 1,
+                  ),
+                ]
+              : null,
+        ),
+        child: Material(
+          color: Colors.transparent,
+          shape: const CircleBorder(),
+          clipBehavior: Clip.antiAlias,
+          child: IconButton(
+            padding: EdgeInsets.zero,
+            constraints: const BoxConstraints(minWidth: 40, minHeight: 40),
+            icon: Icon(icon, size: 20),
+            onPressed: onPressed,
+            color: isActive ? accentColor : accentColor.withValues(alpha: 0.8),
+            splashColor: accentColor.withValues(alpha: 0.15),
+            highlightColor: accentColor.withValues(alpha: 0.1),
+          ),
+        ),
       ),
     );
   }

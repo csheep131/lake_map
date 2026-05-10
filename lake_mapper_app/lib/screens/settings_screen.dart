@@ -1,16 +1,19 @@
 import 'package:flutter/material.dart';
-import 'package:google_fonts/google_fonts.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import '../providers/theme_provider.dart';
+import '../services/auth_service.dart';
 import '../services/sync_service.dart';
 import '../theme/app_colors.dart';
+import 'login_screen.dart';
 
-class SettingsScreen extends StatefulWidget {
+class SettingsScreen extends ConsumerStatefulWidget {
   const SettingsScreen({super.key});
 
   @override
-  State<SettingsScreen> createState() => _SettingsScreenState();
+  ConsumerState<SettingsScreen> createState() => _SettingsScreenState();
 }
 
-class _SettingsScreenState extends State<SettingsScreen> {
+class _SettingsScreenState extends ConsumerState<SettingsScreen> {
   final _nameController = TextEditingController();
   bool _isLoading = false;
 
@@ -57,6 +60,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final themeMode = ref.watch(themeProvider);
+    
     return Scaffold(
       appBar: AppBar(title: const Text('Einstellungen')),
       body: SafeArea(
@@ -65,9 +70,130 @@ class _SettingsScreenState extends State<SettingsScreen> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
+              // Theme-Umschalter
+              Container(
+                decoration: BoxDecoration(
+                  color: AppColors.surface,
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(color: AppColors.surfaceHighlight),
+                ),
+                padding: const EdgeInsets.all(16),
+                child: Row(
+                  children: [
+                    Icon(
+                      themeMode == AppThemeMode.dark ? Icons.dark_mode : Icons.wb_sunny,
+                      color: themeMode == AppThemeMode.dark ? AppColors.cyan : AppColors.amber,
+                    ),
+                    const SizedBox(width: 16),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            themeMode == AppThemeMode.dark ? 'Dark Mode' : 'Familien-Modus',
+                            style: const TextStyle(
+                              fontWeight: FontWeight.bold,
+                              fontSize: 16,
+                            ),
+                          ),
+                          Text(
+                            themeMode == AppThemeMode.dark 
+                                ? 'Dunkle Optik für Nacht' 
+                                : 'Helle Optik + OSM Karten',
+                            style: TextStyle(
+                              color: AppColors.textSecondary,
+                              fontSize: 12,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    Switch(
+                      value: themeMode == AppThemeMode.family,
+                      onChanged: (_) => ref.read(themeProvider.notifier).toggle(),
+                      activeTrackColor: AppColors.cyan,
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 24),
+              // Club-Login Bereich
+              Text(
+                'CLUB-MITGLIEDER',
+                style: TextStyle(fontFamily: 'RobotoMono', 
+                  fontSize: 11,
+                  color: AppColors.textMuted,
+                  fontWeight: FontWeight.w600,
+                  letterSpacing: 1.2,
+                ),
+              ),
+              const SizedBox(height: 16),
+              Container(
+                decoration: BoxDecoration(
+                  color: AppColors.surface,
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(color: AppColors.surfaceHighlight),
+                ),
+                padding: const EdgeInsets.all(16),
+                child: Row(
+                  children: [
+                    Icon(
+                      authService.isLoggedIn ? Icons.check_circle : Icons.login,
+                      color: authService.isLoggedIn ? AppColors.success : AppColors.textMuted,
+                    ),
+                    const SizedBox(width: 16),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            authService.isLoggedIn 
+                                ? 'Angemeldet als ${authService.clubId}' 
+                                : 'Nicht angemeldet',
+                            style: const TextStyle(
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                          Text(
+                            authService.isLoggedIn
+                                ? 'Sync aktiviert'
+                                : 'Anmelden für Sync',
+                            style: TextStyle(
+                              color: AppColors.textSecondary,
+                              fontSize: 12,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    TextButton(
+                      onPressed: () async {
+                        if (authService.isLoggedIn) {
+                          await authService.logout();
+                          setState(() {});
+                        } else {
+                          Navigator.push(
+                            context,
+                            MaterialPageRoute(builder: (_) => const LoginScreen()),
+                          );
+                        }
+                      },
+                      child: Text(
+                        authService.isLoggedIn ? 'ABMELDEN' : 'ANMELDEN',
+                        style: TextStyle(
+                          color: authService.isLoggedIn 
+                              ? AppColors.error 
+                              : AppColors.cyan,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 24),
               Text(
                 'SYNC-KONFIGURATION',
-                style: GoogleFonts.robotoMono(
+                style: TextStyle(fontFamily: 'RobotoMono', 
                   fontSize: 11,
                   color: AppColors.textMuted,
                   fontWeight: FontWeight.w600,
@@ -87,7 +213,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   children: [
                     TextField(
                       controller: _nameController,
-                      style: GoogleFonts.robotoMono(
+                      style: TextStyle(fontFamily: 'RobotoMono', 
                         fontSize: 16,
                         color: AppColors.cyan,
                         fontWeight: FontWeight.w600,

@@ -1,9 +1,13 @@
 import 'package:flutter/material.dart';
 import 'package:geolocator/geolocator.dart';
-import 'package:google_fonts/google_fonts.dart';
+import 'package:latlong2/latlong.dart';
 import '../database/app_database.dart';
 import '../models/depth_point.dart';
+import '../services/location_service.dart';
 import '../services/sync_service.dart';
+import '../services/data_refresh_service.dart';
+import '../utils/geo_utils.dart';
+import '../data/wammsee_polygon.dart';
 import '../theme/app_colors.dart';
 
 class HomeScreen extends StatefulWidget {
@@ -32,6 +36,14 @@ class _HomeScreenState extends State<HomeScreen> {
   void initState() {
     super.initState();
     _init();
+    DataRefreshService.instance.addListener(_onRefresh);
+  }
+
+  void _onRefresh() {
+    if (mounted) {
+      _loadRecentPoints();
+      _loadCurrentPosition();
+    }
   }
 
   Future<void> _init() async {
@@ -43,10 +55,14 @@ class _HomeScreenState extends State<HomeScreen> {
 
   Future<void> _loadRecentPoints() async {
     final points = await AppDatabase.instance.getAllDepthPoints();
-    if (points.isNotEmpty) {
-      _lastPointNumber = points.first.pointNumber;
+    if (mounted) {
+      setState(() {
+        if (points.isNotEmpty) {
+          _lastPointNumber = points.first.pointNumber;
+        }
+        _recentPoints = points.take(50).toList();
+      });
     }
-    _recentPoints = points.take(5).toList();
   }
 
   Future<void> _checkOnlineStatus() async {
@@ -83,6 +99,7 @@ class _HomeScreenState extends State<HomeScreen> {
 
   @override
   void dispose() {
+    DataRefreshService.instance.removeListener(_onRefresh);
     _depthController.dispose();
     _noteController.dispose();
     super.dispose();
@@ -92,6 +109,35 @@ class _HomeScreenState extends State<HomeScreen> {
     setState(() => _errorMessage = null);
 
     try {
+      // Erst Berechtigung prüfen/anfordern
+      final hasPermission = await LocationService.instance.checkPermission();
+      if (!hasPermission) {
+        setState(() => _errorMessage = 'GPS-Berechtigung fehlt!');
+        // Dialog showen um Einstellungen zu öffnen
+        if (!mounted) return;
+        await showDialog(
+          context: context,
+          builder: (ctx) => AlertDialog(
+            title: const Text('GPS-Berechtigung fehlt'),
+            content: const Text('Die App braucht GPS-Zugriff. Bitte in den Einstellungen erlauben.'),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(ctx),
+                child: const Text('Abbrechen'),
+              ),
+              TextButton(
+                onPressed: () {
+                  Navigator.pop(ctx);
+                  Geolocator.openAppSettings();
+                },
+                child: const Text('Einstellungen'),
+              ),
+            ],
+          ),
+        );
+        return;
+      }
+
       final position = await Geolocator.getCurrentPosition(
         locationSettings: const LocationSettings(
           accuracy: LocationAccuracy.high,
@@ -122,11 +168,18 @@ class _HomeScreenState extends State<HomeScreen> {
       return;
     }
 
+    final currentLatLng = LatLng(_currentPosition!.latitude, _currentPosition!.longitude);
+    if (!isPointInPolygon(currentLatLng, wammseePolygon)) {
+      _showError('GPS liegt außerhalb des Wammsee. Tiefenmessung nur im See möglich. Oder: Kartenansicht (Rechts) → manuell tippen');
+      return;
+    }
+
     setState(() => _isLoading = true);
 
     try {
+      final wammsee = await AppDatabase.instance.getOrCreateWammsee();
       final point = DepthPoint(
-        lakeId: 1,
+        lakeId: wammsee.id!,
         latitude: _currentPosition!.latitude,
         longitude: _currentPosition!.longitude,
         depthM: depth,
@@ -134,20 +187,32 @@ class _HomeScreenState extends State<HomeScreen> {
         createdAt: DateTime.now(),
       );
 
-      await AppDatabase.instance.insertDepthPoint(point);
+      try {
+        await AppDatabase.instance.insertDepthPoint(point);
+        
+        _depthController.clear();
+        _noteController.clear();
 
-      _depthController.clear();
-      _noteController.clear();
-
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Messpunkt #$_lastPointNumber gespeichert'),
-            backgroundColor: AppColors.cyan,
-          ),
-        );
-        await _loadRecentPoints();
-        _loadCurrentPosition();
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('Messpunkt #$_lastPointNumber gespeichert'),
+              backgroundColor: AppColors.cyan,
+            ),
+          );
+          await _loadRecentPoints();
+          _loadCurrentPosition();
+          DataRefreshService.instance.refresh();
+        }
+      } catch (e) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('Fehler beim Speichern: $e'),
+              backgroundColor: AppColors.error,
+            ),
+          );
+        }
       }
     } catch (e) {
       _showError('Fehler beim Speichern: $e');
@@ -240,7 +305,7 @@ class _HomeScreenState extends State<HomeScreen> {
                   const SizedBox(width: 8),
                   Text(
                     'GPS SIGNAL',
-                    style: GoogleFonts.robotoMono(
+                    style: TextStyle(fontFamily: 'RobotoMono', 
                       fontSize: 11,
                       fontWeight: FontWeight.w600,
                       color: AppColors.textMuted,
@@ -252,7 +317,7 @@ class _HomeScreenState extends State<HomeScreen> {
               if (_lastPointNumber != null)
                 Text(
                   '#$_lastPointNumber',
-                  style: GoogleFonts.robotoMono(
+                  style: TextStyle(fontFamily: 'RobotoMono', 
                     fontSize: 12,
                     color: AppColors.cyan,
                     fontWeight: FontWeight.w700,
@@ -315,7 +380,7 @@ class _HomeScreenState extends State<HomeScreen> {
           width: 40,
           child: Text(
             label,
-            style: GoogleFonts.robotoMono(
+            style: TextStyle(fontFamily: 'RobotoMono', 
               fontSize: 10,
               color: AppColors.textMuted,
               fontWeight: FontWeight.w600,
@@ -325,7 +390,7 @@ class _HomeScreenState extends State<HomeScreen> {
         ),
         Text(
           value,
-          style: GoogleFonts.robotoMono(
+          style: TextStyle(fontFamily: 'RobotoMono', 
             fontSize: 14,
             color: AppColors.textPrimary,
             fontWeight: FontWeight.w500,
@@ -339,20 +404,20 @@ class _HomeScreenState extends State<HomeScreen> {
     return TextField(
       controller: _depthController,
       keyboardType: const TextInputType.numberWithOptions(decimal: true),
-      style: GoogleFonts.robotoMono(
+      style: TextStyle(fontFamily: 'RobotoMono', 
         fontSize: 20,
         fontWeight: FontWeight.w700,
         color: AppColors.cyan,
       ),
       decoration: InputDecoration(
         labelText: 'TIEFE',
-        labelStyle: GoogleFonts.robotoMono(
+        labelStyle: TextStyle(fontFamily: 'RobotoMono', 
           fontSize: 11,
           color: AppColors.textMuted,
           letterSpacing: 1.2,
         ),
         suffixText: 'm',
-        suffixStyle: GoogleFonts.robotoMono(
+        suffixStyle: TextStyle(fontFamily: 'RobotoMono', 
           fontSize: 16,
           color: AppColors.textSecondary,
         ),
@@ -374,10 +439,17 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   Widget _buildSaveButton() {
+    final bool hasGps = _currentPosition != null;
+    final bool inLake = hasGps && isPointInPolygon(
+      LatLng(_currentPosition!.latitude, _currentPosition!.longitude),
+      wammseePolygon,
+    );
+    final bool canSave = !_isLoading && hasGps && inLake;
+
     return SizedBox(
       width: double.infinity,
       child: ElevatedButton.icon(
-        onPressed: _isLoading ? null : _savePoint,
+        onPressed: canSave ? _savePoint : null,
         icon: _isLoading
             ? const SizedBox(
                 width: 20,
@@ -385,7 +457,13 @@ class _HomeScreenState extends State<HomeScreen> {
                 child: CircularProgressIndicator(strokeWidth: 2, color: AppColors.abyss),
               )
             : const Icon(Icons.save),
-        label: const Text('MESSPUNKT SPEICHERN'),
+        label: Text(
+          !hasGps
+              ? 'GPS WIRD GE SUCHT...'
+              : !inLake
+                  ? 'AUSSERHALB WAMMSEE'
+                  : 'MESSPUNKT SPEICHERN',
+        ),
       ),
     );
   }
@@ -399,7 +477,7 @@ class _HomeScreenState extends State<HomeScreen> {
           children: [
             Text(
               'LETZTE PUNKTE',
-              style: GoogleFonts.robotoMono(
+              style: TextStyle(fontFamily: 'RobotoMono', 
                 fontSize: 11,
                 color: AppColors.textMuted,
                 fontWeight: FontWeight.w600,
@@ -422,75 +500,197 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
-  Widget _buildPointRow(DepthPoint p) {
-    return Container(
-      margin: const EdgeInsets.only(bottom: 8),
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-      decoration: BoxDecoration(
-        color: AppColors.deep,
-        borderRadius: BorderRadius.circular(8),
-        border: Border.all(color: AppColors.surfaceHighlight),
+  void _showPointActions(DepthPoint p) {
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: AppColors.surface,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
       ),
-      child: Row(
-        children: [
-          Container(
-            width: 32,
-            height: 32,
-            decoration: BoxDecoration(
-              color: _getDepthColor(p.depthM),
-              shape: BoxShape.circle,
-              boxShadow: [
-                BoxShadow(
-                  color: _getDepthColor(p.depthM).withValues(alpha: 0.3),
-                  blurRadius: 8,
-                ),
-              ],
+      builder: (context) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Container(
+              margin: const EdgeInsets.only(top: 12, bottom: 8),
+              width: 40,
+              height: 4,
+              decoration: BoxDecoration(
+                color: AppColors.textMuted.withValues(alpha: 0.3),
+                borderRadius: BorderRadius.circular(2),
+              ),
             ),
-            child: Center(
-              child: Text(
-                '${p.pointNumber}',
-                style: GoogleFonts.robotoMono(
-                  fontSize: 10,
-                  fontWeight: FontWeight.w700,
-                  color: Colors.black,
+            ListTile(
+              leading: Icon(Icons.edit, color: AppColors.cyan),
+              title: const Text('Bearbeiten'),
+              onTap: () {
+                Navigator.pop(context);
+                _editPoint(p);
+              },
+            ),
+            ListTile(
+              leading: const Icon(Icons.delete, color: AppColors.error),
+              title: const Text('Löschen'),
+              onTap: () {
+                Navigator.pop(context);
+                _deletePoint(p);
+              },
+            ),
+            const SizedBox(height: 8),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Future<void> _editPoint(DepthPoint point) async {
+    final depthController = TextEditingController(text: point.depthM.toString());
+    final noteController = TextEditingController(text: point.note ?? '');
+
+    final result = await showDialog<Map<String, dynamic>>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: Text('Punkt #${point.pointNumber} bearbeiten'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            TextField(
+              controller: depthController,
+              keyboardType: const TextInputType.numberWithOptions(decimal: true),
+              style: TextStyle(fontFamily: 'RobotoMono', fontSize: 18, color: AppColors.cyan, fontWeight: FontWeight.w700),
+              decoration: const InputDecoration(labelText: 'Tiefe (m)', suffixText: 'm'),
+            ),
+            const SizedBox(height: 12),
+            TextField(
+              controller: noteController,
+              decoration: const InputDecoration(labelText: 'Notiz'),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(context), child: const Text('Abbrechen')),
+          TextButton(
+            onPressed: () {
+              final depth = double.tryParse(depthController.text.replaceAll(',', '.'));
+              if (depth == null || depth <= 0) return;
+              Navigator.pop(context, {'depthM': depth, 'note': noteController.text.isEmpty ? null : noteController.text});
+            },
+            child: const Text('Speichern'),
+          ),
+        ],
+      ),
+    );
+
+    if (result != null && point.id != null) {
+      final updated = point.copyWith(depthM: result['depthM'], note: result['note']);
+      await AppDatabase.instance.updateDepthPoint(updated);
+      await _loadRecentPoints();
+      DataRefreshService.instance.refresh();
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Punkt aktualisiert')));
+      }
+    }
+  }
+
+  Future<void> _deletePoint(DepthPoint point) async {
+    if (point.id == null) return;
+    final confirm = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Punkt löschen?'),
+        content: Text('Punkt #${point.pointNumber} (${point.depthM}m) unwiderruflich löschen?'),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Abbrechen')),
+          TextButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('Löschen', style: TextStyle(color: AppColors.error)),
+          ),
+        ],
+      ),
+    );
+
+    if (confirm == true) {
+      await AppDatabase.instance.deleteDepthPoint(point.id!);
+      await _loadRecentPoints();
+      DataRefreshService.instance.refresh();
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Punkt gelöscht')));
+      }
+    }
+  }
+
+  Widget _buildPointRow(DepthPoint p) {
+    return GestureDetector(
+      onTap: () => _showPointActions(p),
+      child: Container(
+        margin: const EdgeInsets.only(bottom: 8),
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+        decoration: BoxDecoration(
+          color: AppColors.deep,
+          borderRadius: BorderRadius.circular(8),
+          border: Border.all(color: AppColors.surfaceHighlight),
+        ),
+        child: Row(
+          children: [
+            Container(
+              width: 32,
+              height: 32,
+              decoration: BoxDecoration(
+                color: _getDepthColor(p.depthM),
+                shape: BoxShape.circle,
+                boxShadow: [
+                  BoxShadow(
+                    color: _getDepthColor(p.depthM).withValues(alpha: 0.3),
+                    blurRadius: 8,
+                  ),
+                ],
+              ),
+              child: Center(
+                child: Text(
+                  '${p.pointNumber}',
+                  style: TextStyle(fontFamily: 'RobotoMono', 
+                    fontSize: 10,
+                    fontWeight: FontWeight.w700,
+                    color: Colors.black,
+                  ),
                 ),
               ),
             ),
-          ),
-          const SizedBox(width: 12),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  '${p.depthM.toStringAsFixed(2)} m',
-                  style: const TextStyle(
-                    fontWeight: FontWeight.w700,
-                    color: AppColors.textPrimary,
-                    fontSize: 14,
-                  ),
-                ),
-                if (p.note != null)
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
                   Text(
-                    p.note!,
+                    '${p.depthM.toStringAsFixed(2)} m',
                     style: const TextStyle(
-                      fontSize: 12,
-                      color: AppColors.textSecondary,
+                      fontWeight: FontWeight.w700,
+                      color: AppColors.textPrimary,
+                      fontSize: 14,
                     ),
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
                   ),
-              ],
+                  if (p.note != null)
+                    Text(
+                      p.note!,
+                      style: const TextStyle(
+                        fontSize: 12,
+                        color: AppColors.textSecondary,
+                      ),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                ],
+              ),
             ),
-          ),
-          Text(
-            '${p.latitude.toStringAsFixed(4)}°  ${p.longitude.toStringAsFixed(4)}°',
-            style: GoogleFonts.robotoMono(
-              fontSize: 10,
-              color: AppColors.textMuted,
+            Text(
+              '${p.latitude.toStringAsFixed(4)}°  ${p.longitude.toStringAsFixed(4)}°',
+              style: TextStyle(fontFamily: 'RobotoMono', 
+                fontSize: 10,
+                color: AppColors.textMuted,
+              ),
             ),
-          ),
-        ],
+          ],
+        ),
       ),
     );
   }
@@ -499,7 +699,7 @@ class _HomeScreenState extends State<HomeScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Lake Mapper'),
+        title: const Text('Wammsee App'),
         actions: [
           IconButton(
             icon: _isSyncing
@@ -533,7 +733,7 @@ class _HomeScreenState extends State<HomeScreen> {
                   ),
                   child: Text(
                     _syncStatus!,
-                    style: GoogleFonts.robotoMono(
+                    style: TextStyle(fontFamily: 'RobotoMono', 
                       fontSize: 11,
                       color: AppColors.cyan,
                     ),

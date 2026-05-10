@@ -21,8 +21,9 @@ class AppDatabase {
 
     return await openDatabase(
       path,
-      version: 1,
+      version: 2,
       onCreate: _createDB,
+      onUpgrade: _migrateDB,
     );
   }
 
@@ -42,6 +43,7 @@ class AppDatabase {
         latitude REAL NOT NULL,
         longitude REAL NOT NULL,
         depth_m REAL NOT NULL,
+        accuracy_m REAL,
         note TEXT,
         created_at TEXT NOT NULL,
         point_number INTEGER,
@@ -56,6 +58,13 @@ class AppDatabase {
       'name': 'Wammsee',
       'created_at': DateTime.now().toIso8601String(),
     });
+  }
+
+  Future<void> _migrateDB(Database db, int oldVersion, int newVersion) async {
+    if (oldVersion < 2) {
+      // Migration von Version 1 auf 2: accuracy_m Spalte hinzufügen
+      await db.execute('ALTER TABLE depth_points ADD COLUMN accuracy_m REAL');
+    }
   }
 
   Future<int> insertLake(Lake lake) async {
@@ -80,13 +89,43 @@ class AppDatabase {
     final db = await database;
     final result = await db.query('lakes', where: 'name = ?', whereArgs: ['Wammsee']);
     if (result.isNotEmpty) {
-      return Lake.fromMap(result.first);
+      final lake = Lake.fromMap(result.first);
+      await _seedTestDataIfNeeded(lake.id!);
+      return lake;
     }
     final id = await db.insert('lakes', {
       'name': 'Wammsee',
       'created_at': DateTime.now().toIso8601String(),
     });
+    await _seedTestDataIfNeeded(id);
     return Lake(id: id, name: 'Wammsee', createdAt: DateTime.now());
+  }
+
+  Future<void> _seedTestDataIfNeeded(int lakeId) async {
+    final db = await database;
+    final count = await db.rawQuery('SELECT COUNT(*) as cnt FROM depth_points WHERE lake_id = ?', [lakeId]);
+    final existing = (count.first['cnt'] as int?) ?? 0;
+    if (existing > 0) return;
+
+    final now = DateTime.now();
+    await db.insert('depth_points', {
+      'lake_id': lakeId,
+      'latitude': 49.34750,
+      'longitude': 8.44750,
+      'depth_m': 3.50,
+      'note': 'Testpunkt Nord – Schilfzone',
+      'created_at': now.subtract(const Duration(minutes: 5)).toIso8601String(),
+      'point_number': 1,
+    });
+    await db.insert('depth_points', {
+      'lake_id': lakeId,
+      'latitude': 49.34620,
+      'longitude': 8.44620,
+      'depth_m': 6.20,
+      'note': 'Testpunkt Süd – Tiefenbereich',
+      'created_at': now.subtract(const Duration(minutes: 2)).toIso8601String(),
+      'point_number': 2,
+    });
   }
 
   Future<int> insertDepthPoint(DepthPoint point) async {
