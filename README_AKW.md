@@ -1,6 +1,6 @@
-# Lake Mapper App - Anleitung
+# Wammsee App - Anleitung
 
-Herzlich willkommen! Diese Anleitung hilft dir, die Lake Mapper App auf deinem Handy zu installieren und zu nutzen.
+Herzlich willkommen! Diese Anleitung hilft dir, die Wammsee App auf deinem Handy zu installieren und zu nutzen.
 
 ---
 
@@ -32,21 +32,56 @@ Herzlich willkommen! Diese Anleitung hilft dir, die Lake Mapper App auf deinem H
 
 ---
 
+## Die App nutzen
+
+### Navigation (unten)
+
+- **Messung** (Tropfen): Startseite — Tiefen eingeben & speichern
+- **Karte** (Karte): Kartenansicht mit allen Messpunkten
+- **Stats** (Diagramm): Statistiken & Tiefenverteilung
+- **Export** (Pfeil): CSV / GeoJSON exportieren
+- **Setup** (Zahnrad): Einstellungen & Sync
+
+Die aktive Seite leuchtet **Cyan**, die inaktiven sind **Steel-Blue**.
+
+---
+
 ## Die Karte nutzen
+
+### Kartenmodus (Standard)
+
+- Zeigt OpenStreetMap mit Wammsee-Umriss
+- Farbige Punkte nach Tiefe:
+  - Hell-Cyan = flach (< 2m)
+  - Cyan = 2–4m
+  - Teal = 4–6m
+  - Indigo = 6–8m
+  - Violett = tief (> 8m)
+
+### Bathymetrie-Modus (Sonar)
+
+1. Tippe auf das **Kompass-Symbol** oben rechts (neben der Legende)
+2. Die Karte wechselt zur **Bathymetrie-Ansicht**:
+   - Dunkler Marine-Hintergrund
+   - **Sonar-Grid** (feines Linienraster)
+   - Gefüllte **Tiefenzonen** in bathymetrischen Farben
+   - Messpunkte mit starkem **Glow**
+   - **Legende** oben rechts auf der Karte
+3. Nochmal tippen = zurück zum Kartenmodus
 
 ### So funktioniert die Tiefenmessung:
 
 1. Zum See scrollen
-   - Wische mit dem Finger uber die Karte
+   - Wische mit dem Finger ueber die Karte
    - Zoom: Pinch mit zwei Fingern
 
 2. Position speichern
    - Tippe auf die Stelle im See, wo du messen willst
-   - Oder tippe auf das GPS-Symbol fur deine aktuelle Position
+   - Oder tippe auf das GPS-Symbol fuer deine aktuelle Position
 
 3. Tiefe eingeben
    - Gib die Wassertiefe in Metern ein (z.B. 3.5)
-   - Optional: Notiz hinzufugen
+   - Optional: Notiz hinzufuegen
 
 4. Speichern tippen
 
@@ -58,11 +93,25 @@ Herzlich willkommen! Diese Anleitung hilft dir, die Lake Mapper App auf deinem H
 
 ---
 
-## Daten synchronisieren (fur Club-Mitglieder)
+## Punkte bearbeiten & löschen
+
+### Auf der Startseite (Messung):
+
+- Tippe auf einen Punkt in der Liste "LETZTE PUNKTE"
+- Waehle **Bearbeiten** oder **Löschen**
+
+### Auf der Karte:
+
+- Tippe auf einen farbigen Messpunkt
+- Waehle **Bearbeiten** oder **Löschen**
+
+---
+
+## Daten synchronisieren (fuer Club-Mitglieder)
 
 ### Anmeldung:
 
-1. Gehe auf das Zahnrad (Einstellungen rechts oben)
+1. Gehe auf das Zahnrad (Setup rechts unten)
 2. Scrolle nach unten zu "Club-Mitglieder"
 3. Tippe auf "ANMELDEN"
 
@@ -81,7 +130,7 @@ Herzlich willkommen! Diese Anleitung hilft dir, die Lake Mapper App auf deinem H
 ## Tipps
 
 ### Handy-Grundlagen:
-- Scrollen: Finger uber den Bildschirm ziehen
+- Scrollen: Finger ueber den Bildschirm ziehen
 - Zoom: Zwei Finger auseinander oder zusammen ziehen
 - Antippen: Einmal kurz tippen
 
