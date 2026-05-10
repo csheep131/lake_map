@@ -157,7 +157,7 @@ class SyncService {
         }
       }
 
-      await setLastSyncTime(DateTime.now().utc());
+      await setLastSyncTime(DateTime.now().toUtc());
 
       return SyncResult(uploaded: uploaded, downloaded: downloaded);
     } catch (e) {

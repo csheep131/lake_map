@@ -76,6 +76,19 @@ class AppDatabase {
     return Lake.fromMap(result.first);
   }
 
+  Future<Lake> getOrCreateWammsee() async {
+    final db = await database;
+    final result = await db.query('lakes', where: 'name = ?', whereArgs: ['Wammsee']);
+    if (result.isNotEmpty) {
+      return Lake.fromMap(result.first);
+    }
+    final id = await db.insert('lakes', {
+      'name': 'Wammsee',
+      'created_at': DateTime.now().toIso8601String(),
+    });
+    return Lake(id: id, name: 'Wammsee', createdAt: DateTime.now());
+  }
+
   Future<int> insertDepthPoint(DepthPoint point) async {
     final db = await database;
     

@@ -1,18 +1,32 @@
 # Lake Mapper Roadmap
 
-## Status: In Entwicklung
+## ✅ Fertig
 
 ### Implementierte Features
 
 - [x] Flutter-Projekt mit flutter_map, geolocator, sqflite
 - [x] SQLite-Datenbank (lakes, depth_points)
 - [x] GPS-Tracking mit Genauigkeitsanzeige
+- [x] GPS-Warnung bei schlechter Genauigkeit (>10m)
 - [x] Tiefenmessung speichern mit Notiz
-- [x] Karte mit Markern (farbcodiert nach Tiefe)
+- [x] Automatische Punktnummer
+- [x] Letzten Punkt duplizieren
+- [x] Karte mit farbcodierten Markern
+- [x] Punkt bearbeiten/löschen
+- [x] Tiefenfarben-Legende
 - [x] Export CSV und GeoJSON
 - [x] Remote-Sync mit arxlabs.dev/lakedb/{datenbankname}
-- [x] Offline/Online-Modus mit Sync-Status
+- [x] Offline/Online-Modus
 - [x] Settings für Datenbanknamen
+
+### Offline-Nutzung
+
+Die App funktioniert **komplett offline**:
+- GPS-Empfang auch ohne Internet
+- Lokale SQLite-Datenbank
+- Lokale Kartencaches (OSM)
+- Export auf Gerät speichern
+- Keine Cloud-Sync möglich (aber nicht nötig)
 
 ### Phase 1: Projekt-Grundlage
 
@@ -56,11 +70,13 @@
 
 ### Geplante Komfortfunktionen
 
-- [ ] Punkt löschen / bearbeiten
-- [ ] Automatische Punktnummer
-- [ ] GPS-Genauigkeit-Warnung
-- [ ] Letzten Punkt duplizieren
-- [ ] Tiefenfarben-Legende
+- [x] Punkt löschen / bearbeiten
+- [x] Automatische Punktnummer
+- [x] GPS-Genauigkeit-Warnung
+- [x] Letzten Punkt duplizieren
+- [x] Tiefenfarben-Legende
 - [ ] Offline-Karten (Tile-Caching)
 - [ ] See-Grenzen als GeoJSON
 - [ ] Eigene Seen anlegen
+
+
