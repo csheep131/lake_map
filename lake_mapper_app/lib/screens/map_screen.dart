@@ -28,7 +28,6 @@ class _MapScreenState extends State<MapScreen> {
   bool _isLoading = true;
   bool _abyssMode = false;
   bool _gpsLockMode = false;
-  double? _gpsLockAccuracy;
   Timer? _gpsLockTimer;
   List<LatLng> _cachedGridPoints = [];
   List<Polygon> _cachedDepthContours = [];
@@ -793,9 +792,7 @@ class _MapScreenState extends State<MapScreen> {
                               ),
                               const SizedBox(height: 2),
                               Text(
-                                _gpsLockAccuracy != null
-                                    ? 'Genauigkeit: ${_gpsLockAccuracy!.toStringAsFixed(1)} m'
-                                    : 'Suche Signal…',
+                                'Suche Signal…',
                                 style: TextStyle(
                                   fontFamily: 'RobotoMono',
                                   fontSize: 10,
@@ -1126,10 +1123,7 @@ class _MapScreenState extends State<MapScreen> {
   }
 
   void _toggleGpsLockMode() {
-    setState(() {
-      _gpsLockMode = !_gpsLockMode;
-      _gpsLockAccuracy = null;
-    });
+    setState(() => _gpsLockMode = !_gpsLockMode);
     if (_gpsLockMode) {
       _startGpsLockTimer();
       if (mounted) {
@@ -1159,10 +1153,7 @@ class _MapScreenState extends State<MapScreen> {
 
       if (!mounted) return;
 
-      setState(() {
-        _currentPosition = position;
-        _gpsLockAccuracy = position.accuracy;
-      });
+      setState(() => _currentPosition = position);
 
       final latLng = LatLng(position.latitude, position.longitude);
       final inside = isPointInPolygon(latLng, wammseePolygon);
@@ -1179,12 +1170,12 @@ class _MapScreenState extends State<MapScreen> {
         _gpsLockTimer?.cancel();
         setState(() => _gpsLockMode = false);
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('GPS-Lock perfekt (${position.accuracy.toStringAsFixed(1)} m) – Messdialog geöffnet')),
+          const SnackBar(content: Text('GPS-Lock perfekt – Messdialog geöffnet')),
         );
         _showSaveDepthDialog(latLng);
       } else {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('GPS-Genauigkeit: ${position.accuracy.toStringAsFixed(1)} m – suche weiter…')),
+          const SnackBar(content: Text('GPS-Signal noch nicht optimal – suche weiter…')),
         );
       }
     } catch (e) {
@@ -1231,12 +1222,6 @@ class _MapScreenState extends State<MapScreen> {
     }
 
     setState(() => _currentPosition = bestPosition);
-
-    if (bestPosition.accuracy > 10 && mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('GPS-Genauigkeit: ${bestPosition.accuracy.toStringAsFixed(1)} m')),
-      );
-    }
 
     if (mounted) {
       final latLng = LatLng(bestPosition.latitude, bestPosition.longitude);
