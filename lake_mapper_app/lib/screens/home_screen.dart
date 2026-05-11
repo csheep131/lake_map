@@ -30,7 +30,6 @@ class _HomeScreenState extends State<HomeScreen> {
   int? _lastPointNumber;
   List<DepthPoint> _recentPoints = [];
 
-  static const _accuracyWarningThreshold = 10.0;
 
   @override
   void initState() {
@@ -331,29 +330,7 @@ class _HomeScreenState extends State<HomeScreen> {
             const SizedBox(height: 4),
             _buildCoordRow('LON', _currentPosition!.longitude.toStringAsFixed(6)),
             const SizedBox(height: 8),
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                Text(
-                  'Genauigkeit: ±${_currentPosition!.accuracy.toStringAsFixed(1)} m',
-                  style: TextStyle(
-                    fontSize: 12,
-                    color: _currentPosition!.accuracy > _accuracyWarningThreshold
-                        ? AppColors.amber
-                        : AppColors.textSecondary,
-                  ),
-                ),
-                if (_currentPosition!.accuracy > _accuracyWarningThreshold)
-                  const Text(
-                    '⚠ UNGENAU',
-                    style: TextStyle(
-                      color: AppColors.amber,
-                      fontSize: 11,
-                      fontWeight: FontWeight.w700,
-                    ),
-                  ),
-              ],
-            ),
+            const SizedBox(height: 4),
           ] else if (_errorMessage != null) ...[
             Text(_errorMessage!, style: const TextStyle(color: AppColors.error)),
             const SizedBox(height: 8),

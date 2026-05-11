@@ -1160,7 +1160,7 @@ class _MapScreenState extends State<MapScreen> {
 
       if (!inside) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('GPS außerhalb Wammsee – Genauigkeit: ${position.accuracy.toStringAsFixed(1)} m')),
+          const SnackBar(content: Text('GPS außerhalb Wammsee')),
         );
         return;
       }
