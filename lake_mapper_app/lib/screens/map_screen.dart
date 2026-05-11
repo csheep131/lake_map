@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:math';
 import 'package:flutter/material.dart';
 import 'package:flutter_map/flutter_map.dart';
@@ -26,6 +27,9 @@ class _MapScreenState extends State<MapScreen> {
   Position? _currentPosition;
   bool _isLoading = true;
   bool _abyssMode = false;
+  bool _gpsLockMode = false;
+  double? _gpsLockAccuracy;
+  Timer? _gpsLockTimer;
   List<LatLng> _cachedGridPoints = [];
   List<Polygon> _cachedDepthContours = [];
   List<Polygon> _cachedAbyssDepthContours = [];
@@ -50,6 +54,7 @@ class _MapScreenState extends State<MapScreen> {
 
   @override
   void dispose() {
+    _gpsLockTimer?.cancel();
     DataRefreshService.instance.removeListener(_onRefresh);
     super.dispose();
   }
@@ -717,18 +722,18 @@ class _MapScreenState extends State<MapScreen> {
                                 ),
                               ),
                             )),
-                        if (_currentPosition != null)
+                        if (_currentPosition != null && isPointInPolygon(LatLng(_currentPosition!.latitude, _currentPosition!.longitude), wammseePolygon))
                           Marker(
                             point: LatLng(_currentPosition!.latitude, _currentPosition!.longitude),
                             width: 28,
                             height: 28,
                             child: Container(
                               decoration: BoxDecoration(
-                                color: AppColors.amber,
+                                color: Colors.blue.shade400,
                                 shape: BoxShape.circle,
-                                border: Border.all(color: AppColors.abyss, width: 3),
+                                border: Border.all(color: Colors.white, width: 3),
                                 boxShadow: [
-                                  BoxShadow(color: AppColors.amber.withValues(alpha: 0.5), blurRadius: 12, spreadRadius: 4),
+                                  BoxShadow(color: Colors.blue.shade400.withValues(alpha: 0.6), blurRadius: 16, spreadRadius: 6),
                                 ],
                               ),
                             ),
@@ -737,6 +742,72 @@ class _MapScreenState extends State<MapScreen> {
                     ),
                   ],
                 ),
+
+                // GPS-Lock Status Overlay
+                if (_gpsLockMode)
+                  Positioned(
+                    top: 12,
+                    left: 12,
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                      decoration: BoxDecoration(
+                        color: AppColors.navyDark.withValues(alpha: 0.9),
+                        borderRadius: BorderRadius.circular(12),
+                        border: Border.all(
+                          color: AppColors.amber.withValues(alpha: 0.4),
+                          width: 1.5,
+                        ),
+                        boxShadow: [
+                          BoxShadow(
+                            color: AppColors.amber.withValues(alpha: 0.2),
+                            blurRadius: 16,
+                            spreadRadius: 2,
+                          ),
+                        ],
+                      ),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          SizedBox(
+                            width: 14,
+                            height: 14,
+                            child: CircularProgressIndicator(
+                              strokeWidth: 2,
+                              valueColor: AlwaysStoppedAnimation<Color>(AppColors.amber),
+                            ),
+                          ),
+                          const SizedBox(width: 10),
+                          Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Text(
+                                'GPS-EINRASTEN',
+                                style: TextStyle(
+                                  fontFamily: 'RobotoMono',
+                                  fontSize: 9,
+                                  fontWeight: FontWeight.w700,
+                                  color: AppColors.amber,
+                                  letterSpacing: 1.2,
+                                ),
+                              ),
+                              const SizedBox(height: 2),
+                              Text(
+                                _gpsLockAccuracy != null
+                                    ? 'Genauigkeit: ${_gpsLockAccuracy!.toStringAsFixed(1)} m'
+                                    : 'Suche Signal…',
+                                style: TextStyle(
+                                  fontFamily: 'RobotoMono',
+                                  fontSize: 10,
+                                  color: AppColors.textSecondary,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
 
                 // Bathymetry legend overlay (abyss mode only)
                 if (_abyssMode && _points.isNotEmpty)
@@ -825,6 +896,13 @@ class _MapScreenState extends State<MapScreen> {
                               : null,
                           disabledTooltip: 'Außerhalb',
                         ),
+                        _mapFAB(
+                          _gpsLockMode ? Icons.gps_fixed : Icons.gps_not_fixed,
+                          _gpsLockMode ? 'Lock an' : 'GPS-Lock',
+                          _toggleGpsLockMode,
+                          isActive: _gpsLockMode,
+                          accentColor: _gpsLockMode ? AppColors.amber : AppColors.cyan,
+                        ),
                         _mapFAB(Icons.center_focus_strong, 'Zentrum', _centerOnWammsee),
                         _mapFAB(
                           Icons.add_location,
@@ -841,28 +919,34 @@ class _MapScreenState extends State<MapScreen> {
     );
   }
 
-  Widget _mapFAB(IconData icon, String tooltip, VoidCallback? onPressed, {String? disabledTooltip, bool isPrimary = false}) {
+  Widget _mapFAB(IconData icon, String tooltip, VoidCallback? onPressed, {String? disabledTooltip, bool isPrimary = false, bool isActive = false, Color accentColor = AppColors.cyan}) {
     final isDisabled = onPressed == null;
     final iconColor = isDisabled
         ? AppColors.textMuted.withValues(alpha: 0.4)
         : isPrimary
             ? AppColors.cyan
-            : AppColors.cyan.withValues(alpha: 0.85);
+            : accentColor.withValues(alpha: 0.85);
     final bgColor = isDisabled
         ? AppColors.abyss.withValues(alpha: 0.5)
         : isPrimary
             ? AppColors.cyan.withValues(alpha: 0.12)
-            : Colors.white.withValues(alpha: 0.05);
+            : isActive
+                ? accentColor.withValues(alpha: 0.15)
+                : Colors.white.withValues(alpha: 0.05);
     final borderColor = isDisabled
         ? AppColors.surfaceHighlight.withValues(alpha: 0.15)
         : isPrimary
             ? AppColors.cyan.withValues(alpha: 0.4)
-            : AppColors.cyan.withValues(alpha: 0.15);
+            : isActive
+                ? accentColor.withValues(alpha: 0.5)
+                : AppColors.cyan.withValues(alpha: 0.15);
     final glowColor = isDisabled
         ? Colors.transparent
         : isPrimary
             ? AppColors.cyan.withValues(alpha: 0.25)
-            : AppColors.cyan.withValues(alpha: 0.08);
+            : isActive
+                ? accentColor.withValues(alpha: 0.3)
+                : AppColors.cyan.withValues(alpha: 0.08);
 
     return Column(
       mainAxisSize: MainAxisSize.min,
@@ -1041,36 +1125,131 @@ class _MapScreenState extends State<MapScreen> {
     }
   }
 
-  Future<void> _saveCurrentLocation() async {
-    try {
-      final position = await Geolocator.getCurrentPosition(
-        locationSettings: const LocationSettings(accuracy: LocationAccuracy.high, timeLimit: Duration(seconds: 10)),
-      );
-      setState(() => _currentPosition = position);
-      if (position.accuracy > 10 && mounted) {
+  void _toggleGpsLockMode() {
+    setState(() {
+      _gpsLockMode = !_gpsLockMode;
+      _gpsLockAccuracy = null;
+    });
+    if (_gpsLockMode) {
+      _startGpsLockTimer();
+      if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('GPS-Genauigkeit: ${position.accuracy.toStringAsFixed(1)} m')),
+          const SnackBar(content: Text('GPS-Einrasten aktiviert – suche perfektes Signal…')),
         );
       }
-      if (mounted) {
-        final latLng = LatLng(position.latitude, position.longitude);
-        if (!isPointInPolygon(latLng, wammseePolygon)) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Text('GPS-Position liegt außerhalb des Wammsee'),
-              backgroundColor: AppColors.amber,
-            ),
-          );
-          return;
-        }
+    } else {
+      _gpsLockTimer?.cancel();
+      _gpsLockTimer = null;
+    }
+  }
+
+  void _startGpsLockTimer() {
+    _gpsLockTimer?.cancel();
+    _checkGpsLock(); // sofortiger erster Check
+    _gpsLockTimer = Timer.periodic(const Duration(seconds: 15), (_) => _checkGpsLock());
+  }
+
+  Future<void> _checkGpsLock() async {
+    if (!_gpsLockMode || !mounted) return;
+
+    try {
+      final position = await Geolocator.getCurrentPosition(
+        locationSettings: const LocationSettings(accuracy: LocationAccuracy.best, timeLimit: Duration(seconds: 12)),
+      );
+
+      if (!mounted) return;
+
+      setState(() {
+        _currentPosition = position;
+        _gpsLockAccuracy = position.accuracy;
+      });
+
+      final latLng = LatLng(position.latitude, position.longitude);
+      final inside = isPointInPolygon(latLng, wammseePolygon);
+
+      if (!inside) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('GPS außerhalb Wammsee – Genauigkeit: ${position.accuracy.toStringAsFixed(1)} m')),
+        );
+        return;
+      }
+
+      // "Perfekt" = Genauigkeit <= 5 m
+      if (position.accuracy <= 5.0) {
+        _gpsLockTimer?.cancel();
+        setState(() => _gpsLockMode = false);
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('GPS-Lock perfekt (${position.accuracy.toStringAsFixed(1)} m) – Messdialog geöffnet')),
+        );
         _showSaveDepthDialog(latLng);
+      } else {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('GPS-Genauigkeit: ${position.accuracy.toStringAsFixed(1)} m – suche weiter…')),
+        );
       }
     } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('GPS-Lock: Kein Signal erhalten')),
+        );
+      }
+    }
+  }
+
+  Future<void> _saveCurrentLocation() async {
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('GPS wird optimiert…'), duration: Duration(seconds: 1)),
+      );
+    }
+
+    Position? bestPosition;
+
+    // Bis zu 3 Versuche, die beste Genauigkeit zu ermitteln
+    for (int i = 0; i < 3; i++) {
+      try {
+        final position = await Geolocator.getCurrentPosition(
+          locationSettings: const LocationSettings(accuracy: LocationAccuracy.best, timeLimit: Duration(seconds: 8)),
+        );
+        if (bestPosition == null || position.accuracy < bestPosition.accuracy) {
+          bestPosition = position;
+        }
+        if (bestPosition.accuracy <= 5.0) break; // perfekt, aufhören
+        if (i < 2) await Future.delayed(const Duration(seconds: 2));
+      } catch (e) {
+        // Versuch fehlgeschlagen, nächster Durchlauf
+      }
+    }
+
+    if (bestPosition == null) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(content: Text('GPS-Position konnte nicht ermittelt werden')),
         );
       }
+      return;
+    }
+
+    setState(() => _currentPosition = bestPosition);
+
+    if (bestPosition.accuracy > 10 && mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('GPS-Genauigkeit: ${bestPosition.accuracy.toStringAsFixed(1)} m')),
+      );
+    }
+
+    if (mounted) {
+      final latLng = LatLng(bestPosition.latitude, bestPosition.longitude);
+      if (!isPointInPolygon(latLng, wammseePolygon)) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('GPS-Position liegt außerhalb des Wammsee'),
+            backgroundColor: AppColors.amber,
+          ),
+        );
+        return;
+      }
+      _showSaveDepthDialog(latLng);
     }
   }
 

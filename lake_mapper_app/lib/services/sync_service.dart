@@ -7,7 +7,7 @@ import '../models/lake.dart';
 
 class SyncService {
   static final SyncService instance = SyncService._init();
-  static const _baseUrl = 'https://arxlabs.dev/lakedb';
+  static const _baseUrl = 'https://wammmsee.arxlabs.dev';
 
   SyncService._init();
 
