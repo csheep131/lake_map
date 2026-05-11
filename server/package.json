@@ -1,12 +1,15 @@
 {
-  "name": "lake-mapper-server",
-  "version": "1.0.0",
-  "description": "Backend server for lake mapper sync",
+  "name": "wammsee-server",
+  "version": "2.0.0",
+  "description": "Backend server for Wammsee sync with auth",
   "main": "server.js",
   "scripts": {
     "start": "node server.js"
   },
-  "dependencies": {},
+  "dependencies": {
+    "pg": "^8.11.0",
+    "bcrypt": "^5.1.0"
+  },
   "engines": {
     "node": ">=18"
   }

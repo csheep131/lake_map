@@ -9,6 +9,15 @@ CREATE TABLE IF NOT EXISTS lakes (
     created_at TIMESTAMPTZ DEFAULT NOW()
 );
 
+-- Credentials / Benutzer
+CREATE TABLE IF NOT EXISTS users (
+    id SERIAL PRIMARY KEY,
+    username VARCHAR(100) NOT NULL UNIQUE,
+    password_hash VARCHAR(255) NOT NULL,
+    is_admin BOOLEAN DEFAULT FALSE,
+    created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
 -- Tiefenmessungen
 CREATE TABLE IF NOT EXISTS lake_depths (
     id SERIAL PRIMARY KEY,
@@ -42,5 +51,32 @@ SELECT 'Wammsee', ST_GeomFromText(
              8.4458 49.3416))', 4326)
 WHERE NOT EXISTS (SELECT 1 FROM lakes WHERE name = 'Wammsee');
 
+-- Admin-User (Passwort: wammsee2024)
+-- hash: bcrypt($2b$12$LQv3c1yqBWVHxkd0LHAkCOYz6TtxMQJqhN8/LewY5GyYqW8z5k8W6)
+INSERT INTO users (username, password_hash, is_admin)
+SELECT 'admin', '$2b$12$LQv3c1yqBWVHxkd0LHAkCOYz6TtxMQJqhN8/LewY5GyYqW8z5k8W6', TRUE
+WHERE NOT EXISTS (SELECT 1 FROM users WHERE username = 'admin');
+
+-- Test-User (nur Testdaten)
+-- hash: test123
+-- $2b$12$KQv3c1yqBWVHxkd0LHAkCOYz6TtxMQJqhN8/LewY5GyYqW8z5k8W6
+INSERT INTO users (username, password_hash, is_admin)
+SELECT 'test', '$2b$12$KQv3c1yqBWVHxkd0LHAkCOYz6TtxMQJqhN8/LewY5GyYqW8z5k8W6', FALSE
+WHERE NOT EXISTS (SELECT 1 FROM users WHERE username = 'test');
+
+-- 3 Test-Messpunkte (nur für Test-User sichtbar)
+INSERT INTO lake_depths (lake_id, depth_m, location, note)
+SELECT l.id, d.depth, ST_MakePoint(d.lon, d.lat)::geography, d.note
+FROM lakes l,
+     (VALUES 
+       (3.5, 49.3469, 8.4468, 'Testpunkt 1 - flach'),
+       (5.2, 49.3472, 8.4475, 'Testpunkt 2 - mittig'),
+       (7.8, 49.3465, 8.4482, 'Testpunkt 3 - tief')
+     ) AS d(depth, lat, lon, note)
+CROSS JOIN (SELECT id FROM lakes WHERE name = 'Wammsee') l
+WHERE l.id = (SELECT id FROM lakes WHERE name = 'Wammsee')
+  AND NOT EXISTS (SELECT 1 FROM lake_depths WHERE note = d.note);
+
 -- Verify
 SELECT name, ST_IsValid(polygon) AS valid FROM lakes WHERE name = 'Wammsee';
+SELECT username, is_admin FROM users;

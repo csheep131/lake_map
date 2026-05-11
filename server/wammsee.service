@@ -1,0 +1,35 @@
+[Unit]
+Description=Wammsee Backend Server
+After=network.target postgresql.service
+Requires=postgresql.service
+
+[Service]
+Type=simple
+User=www-data
+Group=www-data
+WorkingDirectory=/opt/wammsee-server
+
+# Umgebungsvariablen
+Environment=PORT=3000
+Environment=DB_HOST=localhost
+Environment=DB_PORT=5433
+Environment=DB_NAME=lakemap
+Environment=DB_USER=lakeuser
+Environment=DB_PASSWORD=lake123
+
+ExecStart=/usr/bin/node /opt/wammsee-server/server.js
+
+Restart=on-failure
+RestartSec=10
+StandardOutput=journal
+StandardError=journal
+
+# Security
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/opt/wammsee-server
+
+[Install]
+WantedBy=multi-user.target

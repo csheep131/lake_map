@@ -37,6 +37,18 @@ Mobile App zum Aufnehmen von Tiefenmessungen mit GPS-Koordinaten. Daten werden l
 
 ---
 
+## Screenshots
+
+| HomeScreen | Kartenmodus |
+|:---:|:---:|
+| ![HomeScreen](images/screen_home.png) | ![Kartenmodus](images/screen_map_osm.png) |
+
+| Bathymetrie-Modus | Statistiken |
+|:---:|:---:|
+| ![Bathymetrie](images/screen_map_abyss.png) | ![Statistiken](images/screen_stats.png) |
+
+---
+
 ## Design
 
 Luxury Nautical Instrument Interface:
