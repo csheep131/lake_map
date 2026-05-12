@@ -52,18 +52,18 @@ class DepthPoint {
     );
   }
 
-  // Server liefert: id, depth_m, latitude, longitude, accuracy_m, note, measured_at
   factory DepthPoint.fromServerMap(Map<String, dynamic> map) {
+    final timestamp = map['created_at'] as String? ?? map['measured_at'] as String? ?? '';
     return DepthPoint(
       id: map['id'] as int?,
-      lakeId: 1, // Server hat lake_name statt lake_id - wir mappen auf default See
+      lakeId: (map['lake_id'] as num?)?.toInt() ?? 1,
       latitude: (map['latitude'] as num?)?.toDouble() ?? 0.0,
       longitude: (map['longitude'] as num?)?.toDouble() ?? 0.0,
       depthM: (map['depth_m'] as num?)?.toDouble() ?? 0.0,
       accuracyM: (map['accuracy_m'] as num?)?.toDouble(),
       note: map['note'] as String?,
-      createdAt: DateTime.tryParse(map['measured_at'] as String? ?? '') ?? DateTime.now(),
-      pointNumber: null,
+      createdAt: DateTime.tryParse(timestamp) ?? DateTime.now(),
+      pointNumber: (map['point_number'] as num?)?.toInt(),
     );
   }
 

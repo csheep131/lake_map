@@ -2,19 +2,50 @@ Compiling lib/main.dart for the Web...
 Wasm dry run succeeded. Consider building and testing your application with the `--wasm` flag. See docs for more info: https://docs.flutter.dev/platform-integration/web/wasm
 Use --no-wasm-dry-run to disable these warnings.
 Target dart2js failed: ProcessException: Process exited abnormally with exit code 1:
-lib/services/pmtiles_service.dart:44:10:
-Error: Type 'Theme' not found.
-  static Theme getMapTheme() {
-         ^^^^^
-lib/services/sync_service.dart:127:31:
-Error: The getter 'accuracy' isn't defined for the type 'DepthPoint'.
- - 'DepthPoint' is from 'package:wammsee_app/models/depth_point.dart' ('lib/models/depth_point.dart').
-          'accuracy_m': point.accuracy,
-                              ^^^^^^^^
-lib/services/pmtiles_service.dart:46:12:
-Error: Undefined name 'ProvidedThemes'.
-    return ProvidedThemes.lightTheme();
-           ^^^^^^^^^^^^^^
+lib/screens/map_screen.dart:1427:8:
+Error: 'dispose' is already declared in this scope.
+  void dispose() {
+       ^^^^^^^
+lib/screens/map_screen.dart:94:8:
+Info: Previous declaration of 'dispose'.
+  void dispose() {
+       ^^^^^^^
+lib/screens/export_screen.dart:21:48:
+Error: The method 'exportToCsv' isn't defined for the type 'ExportService'.
+ - 'ExportService' is from 'package:wammsee_app/services/export_service.dart' ('lib/services/export_service.dart').
+      final csv = await ExportService.instance.exportToCsv(points);
+                                               ^^^^^^^^^^^
+lib/screens/export_screen.dart:22:49:
+Error: The method 'getFilePath' isn't defined for the type 'ExportService'.
+ - 'ExportService' is from 'package:wammsee_app/services/export_service.dart' ('lib/services/export_service.dart').
+      final path = await ExportService.instance.getFilePath('depth_points.csv');
+                                                ^^^^^^^^^^^
+lib/screens/export_screen.dart:23:36:
+Error: The method 'saveToFile' isn't defined for the type 'ExportService'.
+ - 'ExportService' is from 'package:wammsee_app/services/export_service.dart' ('lib/services/export_service.dart').
+      await ExportService.instance.saveToFile(csv, 'depth_points.csv');
+                                   ^^^^^^^^^^
+lib/screens/export_screen.dart:49:52:
+Error: The method 'exportToGeoJson' isn't defined for the type 'ExportService'.
+ - 'ExportService' is from 'package:wammsee_app/services/export_service.dart' ('lib/services/export_service.dart').
+      final geoJson = await ExportService.instance.exportToGeoJson(points);
+                                                   ^^^^^^^^^^^^^^^
+lib/screens/export_screen.dart:50:49:
+Error: The method 'getFilePath' isn't defined for the type 'ExportService'.
+ - 'ExportService' is from 'package:wammsee_app/services/export_service.dart' ('lib/services/export_service.dart').
+      final path = await ExportService.instance.getFilePath('depth_points.geojson');
+                                                ^^^^^^^^^^^
+lib/screens/export_screen.dart:51:36:
+Error: The method 'saveToFile' isn't defined for the type 'ExportService'.
+ - 'ExportService' is from 'package:wammsee_app/services/export_service.dart' ('lib/services/export_service.dart').
+      await ExportService.instance.saveToFile(geoJson, 'depth_points.geojson');
+                                   ^^^^^^^^^^
+lib/services/export_service.dart:7:41:
+Error: A value of type 'ExportService/*1*/' can't be assigned to a variable of type 'ExportService/*2*/'.
+ - 'ExportService/*1*/' is from 'package:wammsee_app/services/export_service_base.dart' ('lib/services/export_service_base.dart').
+ - 'ExportService/*2*/' is from 'package:wammsee_app/services/export_service.dart' ('lib/services/export_service.dart').
+  static final ExportService instance = createExportService();
+                                        ^
 Error: Compilation failed.
   Command: /home/schaf/flutter_sdk/bin/cache/dart-sdk/bin/dart compile js --platform-binaries=/home/schaf/flutter_sdk/bin/cache/flutter_web_sdk/kernel --invoker=flutter_tool -Ddart.vm.product=true -DFLUTTER_VERSION=3.41.9 -DFLUTTER_CHANNEL=stable -DFLUTTER_GIT_URL=https://github.com/flutter/flutter.git -DFLUTTER_FRAMEWORK_REVISION=00b0c91f06 -DFLUTTER_ENGINE_REVISION=42d3d75a56 -DFLUTTER_DART_VERSION=3.11.5 -DFLUTTER_WEB_USE_SKIA=true -DFLUTTER_WEB_USE_SKWASM=false -DFLUTTER_WEB_CANVASKIT_URL=https://www.gstatic.com/flutter-canvaskit/42d3d75a56efe1a2e9902f52dc8006099c45d937/ --native-null-assertions --no-source-maps -O4 --minify -o /home/schaf/projects/lake/lake_map/lake_mapper_app/.dart_tool/flutter_build/ebe13bb0e2e56314538f02757eec920c/app.dill --packages=/home/schaf/projects/lake/lake_map/lake_mapper_app/.dart_tool/package_config.json --cfe-only /home/schaf/projects/lake/lake_map/lake_mapper_app/.dart_tool/flutter_build/ebe13bb0e2e56314538f02757eec920c/main.dart
 #0      RunResult.throwException (package:flutter_tools/src/base/process.dart:153:5)

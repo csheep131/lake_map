@@ -94,31 +94,65 @@ class SyncService {
     await prefs.setString('last_sync', time.toIso8601String());
   }
 
+  Future<List<Map<String, dynamic>>> _getPendingPoints() async {
+    final prefs = await SharedPreferences.getInstance();
+    final pending = prefs.getStringList('pending_sync') ?? [];
+    return pending.map((json) => jsonDecode(json) as Map<String, dynamic>).toList();
+  }
+
+  Future<void> _addPendingPoint(DepthPoint point) async {
+    final pending = await _getPendingPoints();
+    pending.add(point.toMap());
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setStringList('pending_sync', pending.map((p) => jsonEncode(p)).toList());
+  }
+
+  Future<void> _removePendingPoint(int pointId) async {
+    final pending = await _getPendingPoints();
+    pending.removeWhere((p) => p['id'] == pointId);
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setStringList('pending_sync', pending.map((p) => jsonEncode(p)).toList());
+  }
+
   Future<SyncResult> syncAll() async {
     int uploaded = 0;
     int downloaded = 0;
 
-    final localPoints = await AppDatabase.instance.getAllDepthPoints();
+    final pendingPoints = await _getPendingPoints();
+    for (final pending in pendingPoints) {
+      try {
+        final result = await _syncRequest(method: 'POST', endpoint: '/depths', body: pending);
+        if (result['id'] != null) {
+          await _removePendingPoint(pending['id'] as int);
+          uploaded++;
+        }
+      } catch (e) {
+        // Punkt bleibt in der Queue für den nächsten Sync
+      }
+    }
 
-    // Server-Daten holen - der Server liefert depths + lakes
+    final localPoints = await AppDatabase.instance.getAllDepthPoints();
     final serverData = await _syncRequest(method: 'GET', endpoint: '/data');
 
     final serverPoints = (serverData['depths'] as List<dynamic>?)
         ?.map((p) => DepthPoint.fromServerMap(p as Map<String, dynamic>))
         .toList() ?? [];
 
-    // Server-Map erstellen (nach ID)
     final serverPointsMap = <int, DepthPoint>{};
     for (final p in serverPoints) {
       if (p.id != null) serverPointsMap[p.id!] = p;
     }
 
-    // Lokale Punkte hochladen (die noch nicht auf dem Server sind)
+    final localPointsMap = <int, DepthPoint>{};
+    for (final p in localPoints) {
+      if (p.id != null) localPointsMap[p.id!] = p;
+    }
+
     for (final point in localPoints) {
       if (point.id == null) continue;
-      final serverPoint = serverPointsMap[point.id];
-      if (serverPoint == null) {
-        // Neuen Punkt hochladen - Server erwartet: lake_id, depth_m, latitude, longitude, accuracy_m, note
+      if (serverPointsMap.containsKey(point.id)) continue;
+
+      try {
         final payload = {
           'lake_id': point.lakeId,
           'depth_m': point.depth,
@@ -129,16 +163,11 @@ class SyncService {
         };
         await _syncRequest(method: 'POST', endpoint: '/depths', body: payload);
         uploaded++;
+      } catch (e) {
+        await _addPendingPoint(point);
       }
     }
 
-    // Lokale Map erstellen
-    final localPointsMap = <int, DepthPoint>{};
-    for (final p in localPoints) {
-      if (p.id != null) localPointsMap[p.id!] = p;
-    }
-
-    // Server-Punkte herunterladen (die noch nicht lokal sind)
     for (final serverPoint in serverPoints) {
       if (serverPoint.id == null) continue;
       if (!localPointsMap.containsKey(serverPoint.id)) {

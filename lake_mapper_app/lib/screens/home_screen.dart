@@ -267,9 +267,14 @@ class _HomeScreenState extends State<HomeScreen> {
   Color _getDepthColor(double depth) => AppColors.depthColor(depth);
 
   Future<void> _duplicateLastPoint() async {
-    if (_lastPointNumber == null || _currentLat == null || _currentLon == null) return;
+    if (_currentLat == null || _currentLon == null) return;
 
-    final lastPoint = _recentPoints.firstWhere((p) => p.pointNumber == _lastPointNumber);
+    final wammsee = await AppDatabase.instance.getOrCreateWammsee();
+    final lastPoint = await AppDatabase.instance.getLastDepthPoint(wammsee.id!);
+    if (lastPoint == null) {
+      _showError('Kein Punkt zum Duplizieren vorhanden');
+      return;
+    }
 
     setState(() => _isLoading = true);
 
@@ -293,7 +298,7 @@ class _HomeScreenState extends State<HomeScreen> {
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(
-              content: Text('Tiefe übernommen – GPS aktualisiert'),
+              content: Text('Tiefe ubernommen - GPS aktualisiert'),
               backgroundColor: AppColors.amber,
             ),
           );

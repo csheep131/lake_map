@@ -46,13 +46,14 @@ class _MapScreenState extends State<MapScreen> {
   WebGpsService? _webGpsService;
   WebGpsState _webGpsState = WebGpsState();
   VectorTileProvider? _vectorTileProvider;
+  String? _mapInitError;
 
   static const _wammseeCenter = LatLng(49.346970, 8.446897);
 
   @override
   void initState() {
     super.initState();
-    _initVectorTiles();
+    // _initVectorTiles();
     if (kIsWeb) {
       _webGpsService = getWebGpsService((newState) {
         if (mounted) {
@@ -99,7 +100,7 @@ class _MapScreenState extends State<MapScreen> {
 
   Future<void> _initVectorTiles() async {
     try {
-      final provider = await PmTilesService.initTileProvider();
+      final provider = await PmTilesService.init();
       if (mounted) {
         setState(() {
           _vectorTileProvider = provider;
@@ -107,6 +108,11 @@ class _MapScreenState extends State<MapScreen> {
       }
     } catch (e) {
       debugPrint('Failed to initialize PMTiles: $e');
+      if (mounted) {
+        setState(() {
+          _mapInitError = e.toString();
+        });
+      }
     }
   }
 
@@ -145,12 +151,12 @@ class _MapScreenState extends State<MapScreen> {
 
   Color _getDepthColor(double depth) => AppColors.depthColor(depth);
 
-  // --- Point-in-Polygon (Ray Casting) ---
   bool _isPointInPolygon(LatLng point, List<LatLng> polygon) {
     bool inside = false;
     for (int i = 0, j = polygon.length - 1; i < polygon.length; j = i++) {
       final xi = polygon[i].longitude, yi = polygon[i].latitude;
       final xj = polygon[j].longitude, yj = polygon[j].latitude;
+      if (yi == yj) continue;
       final intersect = ((yi > point.latitude) != (yj > point.latitude)) &&
           (point.longitude < (xj - xi) * (point.latitude - yi) / (yj - yi) + xi);
       if (intersect) inside = !inside;
@@ -628,12 +634,37 @@ class _MapScreenState extends State<MapScreen> {
                     if (!_abyssMode)
                       _vectorTileProvider != null
                           ? VectorTileLayer(
-                              theme: PmTilesService.getMapTheme(),
+                              theme: PmTilesService.getTheme(),
                               tileProviders: TileProviders({
                                 'protomaps': _vectorTileProvider!,
                               }),
                             )
-                          : const Center(child: CircularProgressIndicator()),
+                          : Center(
+                              child: Column(
+                                mainAxisAlignment: MainAxisAlignment.center,
+                                children: [
+                                  if (_mapInitError == null)
+                                    const CircularProgressIndicator()
+                                  else ...[
+                                    const Icon(Icons.error_outline, color: Colors.red, size: 48),
+                                    const SizedBox(height: 16),
+                                    Text(
+                                      'Fehler beim Laden der Karte:',
+                                      style: TextStyle(color: AppColors.textSecondary),
+                                    ),
+                                    const SizedBox(height: 8),
+                                    Padding(
+                                      padding: const EdgeInsets.symmetric(horizontal: 32),
+                                      child: Text(
+                                        _mapInitError!,
+                                        textAlign: TextAlign.center,
+                                        style: const TextStyle(color: Colors.red, fontSize: 12),
+                                      ),
+                                    ),
+                                  ],
+                                ],
+                              ),
+                            ),
 
                     // Water dot texture (map mode only)
                     if (!_abyssMode)
@@ -1391,4 +1422,5 @@ class _MapScreenState extends State<MapScreen> {
       ),
     );
   }
+
 }

@@ -143,22 +143,31 @@ class AppDatabase extends _$AppDatabase {
     );
   }
 
-  // --- Depth Points ---
-  Future<int> insertDepthPoint(DepthPoint point) async {
-    final pointNumber = point.pointNumber ?? await getNextPointNumber(point.lakeId);
+  Future<int> getNextPointNumberInTx(DatabaseConnectionUser executor, int lakeId) async {
+    final query = selectOnly(depthPointsTable)
+      ..addColumns([depthPointsTable.pointNumber.max()])
+      ..where(depthPointsTable.lakeId.equals(lakeId));
+    final row = await query.getSingle();
+    final maxNum = row.read(depthPointsTable.pointNumber.max());
+    return (maxNum ?? 0) + 1;
+  }
 
-    return await into(depthPointsTable).insert(
-      DepthPointsTableCompanion.insert(
-        lakeId: point.lakeId,
-        latitude: point.latitude,
-        longitude: point.longitude,
-        depthM: point.depthM,
-        accuracyM: Value(point.accuracyM),
-        note: Value(point.note),
-        createdAt: point.createdAt,
-        pointNumber: Value(pointNumber),
-      ),
-    );
+  Future<int> insertDepthPoint(DepthPoint point) async {
+    return await transaction(() async {
+      final pointNumber = point.pointNumber ?? await getNextPointNumberInTx(this, point.lakeId);
+      return await into(depthPointsTable).insert(
+        DepthPointsTableCompanion.insert(
+          lakeId: point.lakeId,
+          latitude: point.latitude,
+          longitude: point.longitude,
+          depthM: point.depthM,
+          accuracyM: Value(point.accuracyM),
+          note: Value(point.note),
+          createdAt: point.createdAt,
+          pointNumber: Value(pointNumber),
+        ),
+      );
+    });
   }
 
   Future<List<DepthPoint>> getDepthPointsForLake(int lakeId) async {
@@ -214,6 +223,20 @@ class AppDatabase extends _$AppDatabase {
     final row = await query.getSingle();
     final maxNum = row.read(depthPointsTable.pointNumber.max());
     return (maxNum ?? 0) + 1;
+  }
+
+  Future<DepthPoint?> getLastDepthPoint(int lakeId) async {
+    final data = await (select(depthPointsTable)
+          ..where((t) => t.lakeId.equals(lakeId))
+          ..orderBy([
+            (t) => OrderingTerm(
+                  expression: t.createdAt,
+                  mode: OrderingMode.desc,
+                ),
+          ])
+          ..limit(1))
+        .getSingleOrNull();
+    return data != null ? _toDepthPoint(data) : null;
   }
 
   @override
