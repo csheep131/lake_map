@@ -23,6 +23,7 @@ class _HomeScreenState extends State<HomeScreen> {
 
   Position? _currentPosition;
   bool _isLoading = false;
+  bool _isSearchingGps = false;
   String? _errorMessage;
   bool _isSyncing = false;
   bool _isOnline = false;
@@ -87,7 +88,7 @@ class _HomeScreenState extends State<HomeScreen> {
       }
     } catch (e) {
       setState(() {
-        _syncStatus = 'Sync-Fehler';
+        _syncStatus = 'Fehler: $e';
       });
     } finally {
       setState(() => _isSyncing = false);
@@ -105,13 +106,19 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   Future<void> _loadCurrentPosition() async {
-    setState(() => _errorMessage = null);
+    setState(() {
+      _errorMessage = null;
+      _isSearchingGps = true;
+    });
 
     try {
       // Erst Berechtigung prüfen/anfordern
       final hasPermission = await LocationService.instance.checkPermission();
       if (!hasPermission) {
-        setState(() => _errorMessage = 'GPS-Berechtigung fehlt!');
+        setState(() {
+          _errorMessage = 'GPS-Berechtigung fehlt!';
+          _isSearchingGps = false;
+        });
         // Dialog showen um Einstellungen zu öffnen
         if (!mounted) return;
         await showDialog(
@@ -137,15 +144,19 @@ class _HomeScreenState extends State<HomeScreen> {
         return;
       }
 
-      final position = await Geolocator.getCurrentPosition(
-        locationSettings: const LocationSettings(
-          accuracy: LocationAccuracy.high,
-          timeLimit: Duration(seconds: 10),
-        ),
-      );
-      setState(() => _currentPosition = position);
+      final position = await LocationService.instance.getCurrentPosition();
+      setState(() {
+        _currentPosition = position;
+        _isSearchingGps = false;
+        if (position == null) {
+          _errorMessage = 'GPS Zeitüberschreitung oder Fehler';
+        }
+      });
     } catch (e) {
-      setState(() => _errorMessage = 'GPS konnte nicht ermittelt werden');
+      setState(() {
+        _errorMessage = 'GPS konnte nicht ermittelt werden';
+        _isSearchingGps = false;
+      });
     }
   }
 
@@ -291,11 +302,15 @@ class _HomeScreenState extends State<HomeScreen> {
                     width: 8,
                     height: 8,
                     decoration: BoxDecoration(
-                      color: _currentPosition != null ? AppColors.success : AppColors.error,
+                      color: _currentPosition != null 
+                          ? AppColors.success 
+                          : (_isSearchingGps ? AppColors.amber : AppColors.error),
                       shape: BoxShape.circle,
                       boxShadow: [
                         BoxShadow(
-                          color: (_currentPosition != null ? AppColors.success : AppColors.error).withValues(alpha: 0.4),
+                          color: (_currentPosition != null 
+                              ? AppColors.success 
+                              : (_isSearchingGps ? AppColors.amber : AppColors.error)).withValues(alpha: 0.4),
                           blurRadius: 8,
                         ),
                       ],
@@ -303,11 +318,11 @@ class _HomeScreenState extends State<HomeScreen> {
                   ),
                   const SizedBox(width: 8),
                   Text(
-                    'GPS SIGNAL',
+                    _isSearchingGps ? 'GPS SUCHE...' : 'GPS SIGNAL',
                     style: TextStyle(fontFamily: 'RobotoMono', 
                       fontSize: 11,
                       fontWeight: FontWeight.w600,
-                      color: AppColors.textMuted,
+                      color: _isSearchingGps ? AppColors.amber : AppColors.textMuted,
                       letterSpacing: 1.2,
                     ),
                   ),

@@ -17,6 +17,7 @@ sudo mkdir -p $SERVER_DIR
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 sudo cp $SCRIPT_DIR/server/server.js $SERVER_DIR/
 sudo cp $SCRIPT_DIR/server/package.json $SERVER_DIR/
+sudo cp -r $SCRIPT_DIR/server/public $SERVER_DIR/
 sudo cp $SCRIPT_DIR/init.sql $SERVER_DIR/
 
 # 2. Node.js + npm packages

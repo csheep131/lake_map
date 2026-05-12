@@ -12,6 +12,7 @@ import '../models/depth_point.dart';
 import '../theme/app_colors.dart';
 import '../data/wammsee_polygon.dart';
 import '../services/data_refresh_service.dart';
+import '../services/location_service.dart';
 import '../utils/geo_utils.dart';
 
 class MapScreen extends StatefulWidget {
@@ -70,12 +71,7 @@ class _MapScreenState extends State<MapScreen> {
 
       Position? position;
       try {
-        position = await Geolocator.getCurrentPosition(
-          locationSettings: const LocationSettings(
-            accuracy: LocationAccuracy.high,
-            timeLimit: Duration(seconds: 5),
-          ),
-        );
+        position = await LocationService.instance.getCurrentPosition();
       } catch (e) {
         position = null;
       }

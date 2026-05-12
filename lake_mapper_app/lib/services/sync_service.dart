@@ -7,7 +7,7 @@ import '../models/lake.dart';
 
 class SyncService {
   static final SyncService instance = SyncService._init();
-  static const _baseUrl = 'https://wammmsee.arxlabs.dev';
+  static const _baseUrl = 'https://wammsee.arxlabs.dev';
 
   SyncService._init();
 
@@ -42,7 +42,7 @@ class SyncService {
     required String endpoint,
     Map<String, dynamic>? body,
   }) async {
-    final url = Uri.parse('$_baseUrl/$databaseName$endpoint');
+    final url = Uri.parse('$_baseUrl$endpoint');
     
     http.Response response;
     if (method == 'GET') {
@@ -130,7 +130,7 @@ class SyncService {
             body: point.toMap(),
           );
           uploaded++;
-        } else if (lastSync != null && point.createdAt.isAfter(lastSync)) {
+        } else if (lastSync != null && point.id != null && point.createdAt.isAfter(lastSync)) {
           await _syncRequest(
             method: 'PUT',
             endpoint: '/depth_points/${point.id}',
@@ -140,10 +140,10 @@ class SyncService {
         }
       }
 
-      final localPointsMap = {for (var p in localPoints) p.id: p};
+      final localPointsMap = {for (var p in localPoints) p.id!: p};
       
       for (final serverPoint in serverPoints) {
-        if (!localPointsMap.containsKey(serverPoint.id)) {
+        if (!localPointsMap.containsKey((serverPoint.id) != null && localPointsMap.containsKey(serverPoint.id))) {
           await AppDatabase.instance.insertDepthPoint(serverPoint);
           downloaded++;
         }
