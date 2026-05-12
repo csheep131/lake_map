@@ -95,82 +95,55 @@ class SyncService {
   }
 
   Future<SyncResult> syncAll() async {
-    // Falls kein Name gesetzt, Standard-DB 'wammsee' verwenden
-    if (_databaseName == null) {
-      _databaseName = 'wammsee';
-    }
-
-    final lastSync = await getLastSyncTime();
     int uploaded = 0;
     int downloaded = 0;
 
     final localPoints = await AppDatabase.instance.getAllDepthPoints();
-    final localLakes = await AppDatabase.instance.getAllLakes();
 
+    // Server-Daten holen - der Server liefert depths + lakes
     final serverData = await _syncRequest(method: 'GET', endpoint: '/data');
 
     final serverPoints = (serverData['depths'] as List<dynamic>?)
-        ?.map((p) => DepthPoint.fromMap(p as Map<String, dynamic>))
+        ?.map((p) => DepthPoint.fromServerMap(p as Map<String, dynamic>))
         .toList() ?? [];
 
-    final serverLakes = (serverData['lakes'] as List<dynamic>?)
-        ?.map((l) => Lake.fromMap(l as Map<String, dynamic>))
-        .toList() ?? [];
-
-    // Server-Maps erstellen mit null-safe keys
+    // Server-Map erstellen (nach ID)
     final serverPointsMap = <int, DepthPoint>{};
     for (final p in serverPoints) {
       if (p.id != null) serverPointsMap[p.id!] = p;
     }
-    final serverLakesMap = <int, Lake>{};
-    for (final l in serverLakes) {
-      if (l.id != null) serverLakesMap[l.id!] = l;
-    }
 
-    // Upload local lakes
-    for (final lake in localLakes) {
-      if (lake.id != null && !serverLakesMap.containsKey(lake.id)) {
-        await _syncRequest(method: 'POST', endpoint: '/lakes', body: lake.toMap());
-      }
-    }
-
-    // Upload local points
+    // Lokale Punkte hochladen (die noch nicht auf dem Server sind)
     for (final point in localPoints) {
       if (point.id == null) continue;
       final serverPoint = serverPointsMap[point.id];
       if (serverPoint == null) {
-        await _syncRequest(method: 'POST', endpoint: '/depth_points', body: point.toMap());
-        uploaded++;
-      } else if (lastSync != null && point.createdAt.isAfter(lastSync)) {
-        await _syncRequest(method: 'PUT', endpoint: '/depth_points/${point.id}', body: point.toMap());
+        // Neuen Punkt hochladen - Server erwartet: lake_id, depth_m, latitude, longitude, accuracy_m, note
+        final payload = {
+          'lake_id': point.lakeId,
+          'depth_m': point.depth,
+          'latitude': point.latitude,
+          'longitude': point.longitude,
+          'accuracy_m': point.accuracy,
+          'note': point.note,
+        };
+        await _syncRequest(method: 'POST', endpoint: '/depths', body: payload);
         uploaded++;
       }
     }
 
-    // Local maps erstellen mit null-safe keys
+    // Lokale Map erstellen
     final localPointsMap = <int, DepthPoint>{};
     for (final p in localPoints) {
       if (p.id != null) localPointsMap[p.id!] = p;
     }
-    final localLakesMap = <int, Lake>{};
-    for (final l in localLakes) {
-      if (l.id != null) localLakesMap[l.id!] = l;
-    }
 
-    // Download server points
+    // Server-Punkte herunterladen (die noch nicht lokal sind)
     for (final serverPoint in serverPoints) {
       if (serverPoint.id == null) continue;
       if (!localPointsMap.containsKey(serverPoint.id)) {
         await AppDatabase.instance.insertDepthPoint(serverPoint);
         downloaded++;
-      }
-    }
-
-    // Download server lakes
-    for (final serverLake in serverLakes) {
-      if (serverLake.id == null) continue;
-      if (!localLakesMap.containsKey(serverLake.id)) {
-        await AppDatabase.instance.insertLake(serverLake);
       }
     }
 

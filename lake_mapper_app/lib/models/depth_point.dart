@@ -21,6 +21,9 @@ class DepthPoint {
     this.pointNumber,
   });
 
+  // Alias für kompatibilität mit sync_service
+  double get depth => depthM;
+
   Map<String, dynamic> toMap() {
     return {
       'id': id,
@@ -46,6 +49,21 @@ class DepthPoint {
       note: map['note'] as String?,
       createdAt: DateTime.tryParse(map['created_at'] as String? ?? '') ?? DateTime.now(),
       pointNumber: (map['point_number'] as num?)?.toInt(),
+    );
+  }
+
+  // Server liefert: id, depth_m, latitude, longitude, accuracy_m, note, measured_at
+  factory DepthPoint.fromServerMap(Map<String, dynamic> map) {
+    return DepthPoint(
+      id: map['id'] as int?,
+      lakeId: 1, // Server hat lake_name statt lake_id - wir mappen auf default See
+      latitude: (map['latitude'] as num?)?.toDouble() ?? 0.0,
+      longitude: (map['longitude'] as num?)?.toDouble() ?? 0.0,
+      depthM: (map['depth_m'] as num?)?.toDouble() ?? 0.0,
+      accuracyM: (map['accuracy_m'] as num?)?.toDouble(),
+      note: map['note'] as String?,
+      createdAt: DateTime.tryParse(map['measured_at'] as String? ?? '') ?? DateTime.now(),
+      pointNumber: null,
     );
   }
 
