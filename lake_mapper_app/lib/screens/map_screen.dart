@@ -53,7 +53,7 @@ class _MapScreenState extends State<MapScreen> {
   @override
   void initState() {
     super.initState();
-    // _initVectorTiles();
+    _initVectorTiles();
     if (kIsWeb) {
       _webGpsService = getWebGpsService((newState) {
         if (mounted) {
