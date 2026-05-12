@@ -622,7 +622,7 @@ class _MapScreenState extends State<MapScreen> {
                     initialZoom: MapConfig.initialZoom,
                     minZoom: MapConfig.minZoom,
                     maxZoom: MapConfig.maxZoom,
-                    cameraConstraint: CameraConstraint.contain(bounds: MapConfig.cameraBounds),
+                    // cameraConstraint: CameraConstraint.contain(bounds: MapConfig.cameraBounds),
                     onTap: _onMapTap,
                     interactionOptions: const InteractionOptions(
                       flags: InteractiveFlag.all,
@@ -631,40 +631,14 @@ class _MapScreenState extends State<MapScreen> {
                   ),
                   children: [
                     // PMTiles vector tiles only in map mode
-                    if (!_abyssMode)
-                      _vectorTileProvider != null
-                          ? VectorTileLayer(
-                              theme: PmTilesService.getTheme(),
-                              tileProviders: TileProviders({
-                                'protomaps': _vectorTileProvider!,
-                              }),
-                            )
-                          : Center(
-                              child: Column(
-                                mainAxisAlignment: MainAxisAlignment.center,
-                                children: [
-                                  if (_mapInitError == null)
-                                    const CircularProgressIndicator()
-                                  else ...[
-                                    const Icon(Icons.error_outline, color: Colors.red, size: 48),
-                                    const SizedBox(height: 16),
-                                    Text(
-                                      'Fehler beim Laden der Karte:',
-                                      style: TextStyle(color: AppColors.textSecondary),
-                                    ),
-                                    const SizedBox(height: 8),
-                                    Padding(
-                                      padding: const EdgeInsets.symmetric(horizontal: 32),
-                                      child: Text(
-                                        _mapInitError!,
-                                        textAlign: TextAlign.center,
-                                        style: const TextStyle(color: Colors.red, fontSize: 12),
-                                      ),
-                                    ),
-                                  ],
-                                ],
-                              ),
-                            ),
+                      VectorTileLayer(
+                        theme: PmTilesService.getTheme(),
+                        tileProviders: TileProviders({
+                          'protomaps': NetworkVectorTileProvider(
+                            urlTemplate: 'https://demotiles.maplibre.org/tiles/{z}/{x}/{y}.pbf',
+                          ),
+                        }),
+                      ),
 
                     // Water dot texture (map mode only)
                     if (!_abyssMode)

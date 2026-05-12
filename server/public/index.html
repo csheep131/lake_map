@@ -27,6 +27,7 @@
       </a>
       <div class="nav-links">
         <a href="#features" class="nav-link">Features</a>
+        <a href="#gallery" class="nav-link">Galerie</a>
         <a href="#download" class="nav-link nav-cta">Download</a>
       </div>
     </div>
@@ -36,13 +37,12 @@
   <section class="hero">
     <div class="hero-content">
       <h1 class="hero-title">
-        <span class="title-line">Der Wammsee unter der Oberfläche</span>
+        <span class="title-line">Tiefen vermessen.</span>
+        <span class="title-line title-glow">Daten teilen.</span>
+        <span class="title-line">Gewässer verstehen.</span>
       </h1>
       <p class="hero-subtitle">
-        Erfahrene Angler wissen: Die wirklich spannenden Stellen sieht man nicht vom Ufer aus. Tiefenkanten, Rinnen, Krautbänke, Plateaus und Unterwasserstrukturen entscheiden oft darüber, wo Fisch steht und wie sich ein Gewässer entwickelt.<br><br>
-        Mit der Wammsee App sammeln wir dieses Wissen gemeinsam. Wer ein Echolot dabei hat, kann Tiefenprofile aufzeichnen und die bathymetrische Karte des Sees verbessern sowie interessante Informationen hinzufügen.<br><br>
-        Auf dem See zeigt dir die App deine aktuelle Position per GPS als leuchtend blauen Punkt auf der Karte. Die Nutzung funktioniert offline – es muss nur das GPS aktiviert sein, die Synchronisierung erfolgt später automatisch über die Cloud, sobald du wieder online bist.<br><br>
-        So entsteht eine präzise, vereinsinterne Karte des Wammsees – aus echten Messungen, Erfahrung und Gewässerkenntnis.
+        Die Wammsee App für Bathymetrie-Kartierung mit Cloud-Sync. Mit einem Echolot lassen sich faszinierende Tiefenprofile des Sees aufzeichnen — wo liegen die Krautbänke, wo die tiefen Rinnen, wo die Unterwasserstrukturen? Jede Messung trägt dazu bei, ein genaueres Bild des Wammsees zu zeichnen. Wenn du auf dem Wasser unterwegs bist, siehst du deine Position als leuchtend blauer Punkt auf der Karte. GPS-gestützt, offline-fähig und mit Cloud-Sync für alle Vereinsmitglieder. Gemeinsam kartieren wir die Unterwasserwelt und entdecken das Gewässer von einer neuen Seite.
       </p>
       <div class="hero-actions">
         <a href="downloads/wammsee-lake-mapper.apk" class="btn-primary" download>
@@ -51,18 +51,8 @@
           </svg>
           APK Herunterladen
         </a>
-        <a href="web/index.html" class="btn-blue">
-          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <rect x="2" y="3" width="20" height="14" rx="2" ry="2"/>
-            <line x1="8" y1="21" x2="16" y2="21"/>
-            <line x1="12" y1="17" x2="12" y2="21"/>
-          </svg>
-          OSX – Webversion
-        </a>
+        <a href="#anleitung" class="btn-secondary">Anleitung lesen</a>
       </div>
-      <p class="hero-info" style="text-align:center;margin-top:16px;color:var(--text-muted);font-size:0.9rem;">
-        Ein Zugang und Passwort bekommst du einfach von Thomas im Vereins-Chat.
-      </p>
     </div>
 
     <!-- Floating depth markers decoration -->
@@ -167,14 +157,49 @@
     </div>
   </section>
 
+  <!-- Gallery Section -->
+  <section class="gallery" id="gallery">
+    <div class="section-header">
+      <span class="section-eyebrow">Screenshots</span>
+      <h2 class="section-title">So sieht sie aus</h2>
+    </div>
+    <div class="gallery-showcase">
+      <div class="phone-mockup">
+        <div class="phone-frame">
+          <div class="phone-notch"></div>
+          <img src="img/screen_home.png" alt="HomeScreen" class="phone-screen" id="galleryScreen">
+        </div>
+        <div class="phone-reflection"></div>
+      </div>
+      <div class="gallery-controls">
+        <button class="gallery-btn active" data-screen="img/screen_home.png">
+          <span class="btn-dot" style="--color:#00E5CC"></span>
+          Messung
+        </button>
+        <button class="gallery-btn" data-screen="img/screen_map_osm.png">
+          <span class="btn-dot" style="--color:#7FFFD4"></span>
+          Kartenmodus
+        </button>
+        <button class="gallery-btn" data-screen="img/screen_map_abyss.png">
+          <span class="btn-dot" style="--color:#2E3A87"></span>
+          Bathymetrie
+        </button>
+        <button class="gallery-btn" data-screen="img/screen_stats.png">
+          <span class="btn-dot" style="--color:#FFB347"></span>
+          Statistiken
+        </button>
+      </div>
+    </div>
+  </section>
+
   <!-- Download Section -->
   <section class="download" id="download">
     <div class="download-card">
       <div class="download-glow"></div>
       <div class="download-content">
-        <h2 class="download-title">Möchtest du mitmachen?</h2>
+        <h2 class="download-title">Bereit zum Angeln?</h2>
         <p class="download-desc">
-          Die App ist exklusiv für Mitglieder des Angelvereins Kurpfalz. 
+          Die App ist exklusiv für Mitglieder des Angelvereins Speyer. 
           Lade die APK direkt herunter und installiere sie auf deinem Android-Gerät.
         </p>
         <div class="download-meta">
@@ -257,13 +282,6 @@
           <p>Gehe zu Setup und melde dich mit deinen Vereinszugangsdaten an. Tippe auf die Cloud, um alle Daten hoch- und runterzuladen.</p>
         </div>
       </div>
-      <div class="guide-step">
-        <div class="step-number">06</div>
-        <div class="step-content">
-          <h3>Installation ohne Play Store</h3>
-          <p>Diese App wurde <strong>privat für den Verein erstellt</strong> und ist nicht im Google Play Store verfügbar. Beim Installieren der APK zeigt Android eine Warnung an — das ist normal und kein Grund zur Sorge. Tippe einfach auf "Trotzdem installieren". Die App ist sicher und enthält keine Werbung oder Tracking.</p>
-        </div>
-      </div>
     </div>
   </section>
 
@@ -285,15 +303,16 @@
         <span>Wammsee Lake Mapper</span>
       </div>
       <p class="footer-text">
-        Exklusiv für Mitglieder des Angelvereins Kurpfalz.<br>
+        Exklusiv für Mitglieder des Angelvereins Speyer.<br>
         GPS-Tiefenmessung & Bathymetrische Kartierung.
       </p>
       <div class="footer-links">
         <a href="#features">Features</a>
+        <a href="#gallery">Galerie</a>
         <a href="#download">Download</a>
         <a href="#anleitung">Anleitung</a>
       </div>
-      <p class="footer-copy"> 2026 arxlabs</p>
+      <p class="footer-copy"> 2025 Angelverein Speyer</p>
     </div>
   </footer>
 

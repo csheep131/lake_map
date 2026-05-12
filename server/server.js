@@ -1,21 +1,47 @@
 const http = require('http');
 const fs = require('fs');
 const path = require('path');
+const crypto = require('crypto');
 const { Pool } = require('pg');
 const bcrypt = require('bcrypt');
 
 const PORT = process.env.PORT || 3000;
 
+// BUG-002 FIX: Keine hardcoded Default-Credentials
+const DB_HOST = process.env.DB_HOST;
+const DB_PORT = process.env.DB_PORT;
+const DB_NAME = process.env.DB_NAME;
+const DB_USER = process.env.DB_USER;
+const DB_PASSWORD = process.env.DB_PASSWORD;
+
+if (!DB_HOST || !DB_PORT || !DB_NAME || !DB_USER || !DB_PASSWORD) {
+  console.error('FEHLER: Alle DB_* Umgebungsvariablen sind erforderlich:');
+  console.error('  DB_HOST, DB_PORT, DB_NAME, DB_USER, DB_PASSWORD');
+  process.exit(1);
+}
+
 // Datenbank-Connection
 const pool = new Pool({
-  host: process.env.DB_HOST || 'localhost',
-  port: process.env.DB_PORT || 5432,
-  database: process.env.DB_NAME || 'lakemap',
-  user: process.env.DB_USER || 'lakeuser',
-  password: process.env.DB_PASSWORD || 'lake123',
+  host: DB_HOST,
+  port: parseInt(DB_PORT, 10),
+  database: DB_NAME,
+  user: DB_USER,
+  password: DB_PASSWORD,
 });
 
+// BUG-001 FIX: HMAC-Secret fur Token-Signatur
+const TOKEN_SECRET = process.env.TOKEN_SECRET;
+if (!TOKEN_SECRET) {
+  console.error('FEHLER: TOKEN_SECRET Umgebungsvariable ist erforderlich.');
+  process.exit(1);
+}
+const TOKEN_EXPIRY_MS = 24 * 60 * 60 * 1000; // 24 Stunden
+
 const INVALID_TOKENS = new Set();
+
+const loginAttempts = new Map();
+const MAX_LOGIN_ATTEMPTS = 5;
+const LOGIN_LOCKOUT_MS = 15 * 60 * 1000;
 
 // MIME-Typen für statische Dateien
 const MIME_TYPES = {
@@ -80,17 +106,38 @@ async function verifyPassword(inputPassword, hash) {
   }
 }
 
+// BUG-001 FIX: Token mit HMAC-Signatur
 function createToken(username) {
-  const payload = `${username}:${Date.now()}`;
-  return Buffer.from(payload).toString('base64');
+  const timestamp = Date.now();
+  const payload = `${username}:${timestamp}`;
+  const signature = crypto
+    .createHmac('sha256', TOKEN_SECRET)
+    .update(payload)
+    .digest('hex');
+  const tokenData = JSON.stringify({ username, timestamp, signature });
+  return Buffer.from(tokenData).toString('base64url');
 }
 
 function parseToken(token) {
   try {
-    const decoded = Buffer.from(token, 'base64').toString('utf8');
-    const [username, timestamp] = decoded.split(':');
-    const age = Date.now() - parseInt(timestamp);
-    if (age > 24 * 60 * 60 * 1000) return null;
+    const decoded = Buffer.from(token, 'base64url').toString('utf8');
+    const { username, timestamp, signature } = JSON.parse(decoded);
+
+    // Signatur verifizieren
+    const payload = `${username}:${timestamp}`;
+    const expectedSignature = crypto
+      .createHmac('sha256', TOKEN_SECRET)
+      .update(payload)
+      .digest('hex');
+
+    if (signature !== expectedSignature) {
+      return null; // Manipulierter Token
+    }
+
+    // Token-Alter prufen
+    const age = Date.now() - timestamp;
+    if (age > TOKEN_EXPIRY_MS) return null;
+
     return username;
   } catch {
     return null;
@@ -102,7 +149,11 @@ async function handleApiRequest(req, res) {
   const url = new URL(req.url, `http://localhost:${PORT}`);
   const pathParts = url.pathname.split('/').filter(Boolean);
 
-  res.setHeader('Access-Control-Allow-Origin', '*');
+  const allowedOrigins = (process.env.ALLOWED_ORIGINS || 'http://localhost:3000,http://localhost:8080').split(',');
+  const origin = req.headers.origin;
+  if (origin && allowedOrigins.includes(origin)) {
+    res.setHeader('Access-Control-Allow-Origin', origin);
+  }
   res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
 
@@ -131,7 +182,7 @@ async function handleApiRequest(req, res) {
   if (apiCommand === 'lakedb' && pathParts.length > 2) {
     apiCommand = pathParts[2];
     pathParts.splice(0, 2); // Entferne 'lakedb' und den Namen
-  } else if (pathParts.length > 1 && !['login', 'logout', 'data', 'depths', 'health'].includes(pathParts[0])) {
+  } else if (pathParts.length > 1 && !['login', 'logout', 'data', 'depths', 'health', 'admin'].includes(pathParts[0])) {
     apiCommand = pathParts[1];
     pathParts.splice(0, 1); // Entferne den Namen
   }
@@ -142,6 +193,14 @@ async function handleApiRequest(req, res) {
     for await (const chunk of req) { body += chunk; }
     const { username, password } = JSON.parse(body);
 
+    const now = Date.now();
+    const attempts = loginAttempts.get(username) || { count: 0, lockedUntil: 0 };
+    if (attempts.lockedUntil > now) {
+      res.writeHead(429, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ error: 'Zu viele Versuche. Bitte warte 15 Minuten.' }));
+      return;
+    }
+
     try {
       const users = await query(
         'SELECT id, username, password_hash, is_admin FROM users WHERE username = $1',
@@ -149,11 +208,17 @@ async function handleApiRequest(req, res) {
       );
 
       if (users.length === 0 || !(await verifyPassword(password, users[0].password_hash))) {
+        attempts.count++;
+        if (attempts.count >= MAX_LOGIN_ATTEMPTS) {
+          attempts.lockedUntil = now + LOGIN_LOCKOUT_MS;
+        }
+        loginAttempts.set(username, attempts);
         res.writeHead(401, { 'Content-Type': 'application/json' });
         res.end(JSON.stringify({ error: 'Invalid credentials' }));
         return;
       }
 
+      loginAttempts.delete(username);
       const token = createToken(username);
       res.writeHead(200, { 'Content-Type': 'application/json' });
       res.end(JSON.stringify({
@@ -214,21 +279,21 @@ async function handleApiRequest(req, res) {
       let depths;
       if (isAdmin) {
         depths = await query(`
-          SELECT d.id, d.depth_m, d.longitude, d.latitude, d.accuracy_m, d.note, d.measured_at,
-                 l.name as lake_name
+          SELECT d.id, d.depth_m, d.longitude, d.latitude, d.accuracy_m, d.note, d.created_at, d.point_number,
+                 l.id as lake_id, l.name as lake_name
           FROM lake_depths d
           JOIN lakes l ON d.lake_id = l.id
-          ORDER BY d.measured_at DESC
+          ORDER BY d.created_at DESC
         `);
       } else {
         depths = await query(`
-          SELECT d.id, d.depth_m, d.longitude, d.latitude, d.accuracy_m, d.note, d.measured_at,
-                 l.name as lake_name
+          SELECT d.id, d.depth_m, d.longitude, d.latitude, d.accuracy_m, d.note, d.created_at, d.point_number,
+                 l.id as lake_id, l.name as lake_name
           FROM lake_depths d
           JOIN lakes l ON d.lake_id = l.id
-          WHERE d.user_id = 1
-          ORDER BY d.measured_at DESC
-        `);
+          WHERE d.user_id = $1
+          ORDER BY d.created_at DESC
+        `, [userId]);
       }
 
       const lakes = await query('SELECT id, name, lat_min, lat_max, lon_min, lon_max FROM lakes');
@@ -243,11 +308,37 @@ async function handleApiRequest(req, res) {
       for await (const chunk of req) { body += chunk; }
       const input = JSON.parse(body);
 
+      const depth_m = parseFloat(input.depth_m);
+      const latitude = parseFloat(input.latitude);
+      const longitude = parseFloat(input.longitude);
+      const lake_id = parseInt(input.lake_id);
+
+      if (isNaN(depth_m) || depth_m < 0 || depth_m > 200) {
+        res.writeHead(400, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ error: 'depth_m muss zwischen 0 und 200 liegen' }));
+        return;
+      }
+      if (isNaN(latitude) || latitude < -90 || latitude > 90) {
+        res.writeHead(400, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ error: 'latitude muss zwischen -90 und 90 liegen' }));
+        return;
+      }
+      if (isNaN(longitude) || longitude < -180 || longitude > 180) {
+        res.writeHead(400, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ error: 'longitude muss zwischen -180 und 180 liegen' }));
+        return;
+      }
+      if (isNaN(lake_id) || lake_id < 1) {
+        res.writeHead(400, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ error: 'lake_id muss eine positive Zahl sein' }));
+        return;
+      }
+
       const result = await query(`
         INSERT INTO lake_depths (lake_id, depth_m, latitude, longitude, accuracy_m, note, user_id)
         VALUES ($1, $2, $3, $4, $5, $6, $7)
         RETURNING id
-      `, [input.lake_id, input.depth_m, input.latitude, input.longitude, input.accuracy_m, input.note, userId]);
+      `, [lake_id, depth_m, latitude, longitude, input.accuracy_m, input.note, userId]);
 
       res.writeHead(201, { 'Content-Type': 'application/json' });
       res.end(JSON.stringify({ id: result[0].id, status: 'created' }));
@@ -256,9 +347,92 @@ async function handleApiRequest(req, res) {
 
     if (apiCommand === 'depths' && pathParts[1] && req.method === 'DELETE') {
       const deleteId = parseInt(pathParts[1]);
+      if (isNaN(deleteId)) {
+        res.writeHead(400, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ error: 'Ungultige ID' }));
+        return;
+      }
+      const existing = await query('SELECT user_id FROM lake_depths WHERE id = $1', [deleteId]);
+      if (existing.length === 0) {
+        res.writeHead(404, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ error: 'Punkt nicht gefunden' }));
+        return;
+      }
+      if (existing[0].user_id !== userId && !isAdmin) {
+        res.writeHead(403, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ error: 'Keine Berechtigung' }));
+        return;
+      }
       await query('DELETE FROM lake_depths WHERE id = $1', [deleteId]);
       res.writeHead(204);
       res.end();
+      return;
+    }
+
+    // === ADMIN ENDPOINTS ===
+    if (apiCommand === 'admin' && pathParts[1] === 'users' && req.method === 'GET') {
+      if (!isAdmin) {
+        res.writeHead(403, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ error: 'Admin erforderlich' }));
+        return;
+      }
+      const users = await query(`
+        SELECT u.id, u.username, COUNT(d.id) as depth_count, MAX(d.created_at) as last_activity
+        FROM users u
+        LEFT JOIN lake_depths d ON u.id = d.user_id
+        GROUP BY u.id, u.username
+        ORDER BY depth_count DESC
+      `);
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ users }));
+      return;
+    }
+
+    if (apiCommand === 'admin' && pathParts[1] === 'users' && pathParts[3] === 'depths' && req.method === 'GET') {
+      if (!isAdmin) {
+        res.writeHead(403, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ error: 'Admin erforderlich' }));
+        return;
+      }
+      const targetUserId = parseInt(pathParts[2]);
+      if (isNaN(targetUserId)) {
+        res.writeHead(400, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ error: 'Ungultige User-ID' }));
+        return;
+      }
+      const depths = await query(`
+        SELECT d.*, l.name as lake_name
+        FROM lake_depths d
+        JOIN lakes l ON d.lake_id = l.id
+        WHERE d.user_id = $1
+        ORDER BY d.created_at DESC
+      `, [targetUserId]);
+      const userInfo = await query('SELECT id, username FROM users WHERE id = $1', [targetUserId]);
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({
+        user: userInfo[0] || null,
+        user_id: targetUserId,
+        depth_count: depths.length,
+        depths
+      }));
+      return;
+    }
+
+    if (apiCommand === 'admin' && pathParts[1] === 'users' && pathParts[3] === 'depths' && req.method === 'DELETE') {
+      if (!isAdmin) {
+        res.writeHead(403, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ error: 'Admin erforderlich' }));
+        return;
+      }
+      const targetUserId = parseInt(pathParts[2]);
+      if (isNaN(targetUserId)) {
+        res.writeHead(400, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ error: 'Ungultige User-ID' }));
+        return;
+      }
+      const result = await pool.query('DELETE FROM lake_depths WHERE user_id = $1', [targetUserId]);
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ deleted: result.rowCount, user_id: targetUserId }));
       return;
     }
 
@@ -271,16 +445,14 @@ async function handleApiRequest(req, res) {
   }
 }
 
-// Haupt-Request-Handler
-async function handleRequest(req, res) {
+const server = http.createServer(async (req, res) => {
   const url = new URL(req.url, `http://localhost:${PORT}`);
   const pathname = url.pathname;
   const pathParts = pathname.split('/').filter(Boolean);
 
   console.log(`[${new Date().toISOString()}] ${req.method} ${pathname}`);
 
-  // Explizite API-Routen-Prüfung
-  const API_KEYWORDS = ['health', 'login', 'logout', 'data', 'depths'];
+  const API_KEYWORDS = ['health', 'login', 'logout', 'data', 'depths', 'admin'];
   const isApiRoute = pathParts.some(p => API_KEYWORDS.includes(p));
 
   if (isApiRoute) {
@@ -288,18 +460,15 @@ async function handleRequest(req, res) {
     return;
   }
 
-  // Root → Landing Page
   if (pathname === '/') {
     const landingPath = path.join(__dirname, 'public', 'index.html');
     return serveStatic(req, res, landingPath);
   }
 
-  // /web/ → Flutter Web App (SPA-Fallback auf web/index.html)
   if (pathname.startsWith('/web')) {
     let filePath = path.join(__dirname, 'public', pathname);
     fs.access(filePath, fs.constants.F_OK, (err) => {
       if (err || pathname === '/web' || pathname === '/web/') {
-        // Alle /web/* Routen die keine Datei sind → Flutter index
         const flutterIndex = path.join(__dirname, 'public', 'web', 'index.html');
         return serveStatic(req, res, flutterIndex);
       }
@@ -308,27 +477,6 @@ async function handleRequest(req, res) {
     return;
   }
 
-  // Alle anderen statischen Dateien (css, js, images, downloads …)
-  const filePath = path.join(__dirname, 'public', pathname);
-  serveStatic(req, res, filePath);
-}
-
-const server = http.createServer((req, res) => {
-  const url = new URL(req.url, `http://localhost:${PORT}`);
-  const pathname = url.pathname;
-
-  // API-Routen NUR wenn Prefix /api oder bekannte API-Endpunkte
-  const apiPrefixes = ['/login', '/logout', '/health', '/data', '/depths', '/lakes'];
-  if (apiPrefixes.some(p => pathname.startsWith(p))) {
-    handleApiRequest(req, res).catch(err => {
-      console.error('API error:', err);
-      res.writeHead(500, { 'Content-Type': 'text/plain' });
-      res.end('Internal Server Error');
-    });
-    return;
-  }
-
-  // Alles andere: statische Dateien
   const filePath = path.join(__dirname, 'public', pathname);
   const ext = path.extname(filePath).toLowerCase();
   const contentType = {
@@ -342,7 +490,6 @@ const server = http.createServer((req, res) => {
 
   fs.readFile(filePath, (err, data) => {
     if (err) {
-      // index.html als Fallback
       const indexPath = path.join(__dirname, 'public', 'index.html');
       fs.readFile(indexPath, (err2, data2) => {
         res.writeHead(200, { 'Content-Type': 'text/html' });
@@ -356,7 +503,7 @@ const server = http.createServer((req, res) => {
 });
 
 server.listen(PORT, () => {
-  console.log(`Wammsee Server läuft auf Port ${PORT}`);
+  console.log(`Wammsee Server lauft auf Port ${PORT}`);
 });
 
 

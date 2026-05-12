@@ -1,51 +1,63 @@
+Resolving dependencies...
+Downloading packages...
+  _fe_analyzer_shared 88.0.0 (100.0.0 available)
+  analyzer 8.1.1 (13.0.0 available)
+  archive 3.6.1 (4.0.9 available)
+  async 2.12.0 (2.13.1 available)
+  checked_yaml 2.0.3 (2.0.4 available)
+  cli_util 0.4.2 (0.5.1 available)
+  cupertino_icons 1.0.8 (1.0.9 available)
+  dart_style 3.1.2 (3.1.9 available)
+  drift 2.31.0 (2.33.0 available)
+  drift_dev 2.31.0 (2.33.0 available)
+  drift_flutter 0.2.8 (0.3.0 available)
+  flutter_lints 5.0.0 (6.0.0 available)
+  flutter_map 7.0.2 (8.3.0 available)
+  flutter_riverpod 2.6.1 (3.3.1 available)
+  geolocator 13.0.4 (14.0.2 available)
+  geolocator_android 4.6.2 (5.0.2 available)
+  json_annotation 4.9.0 (4.11.0 available)
+  latlong2 0.9.1 (0.10.1 available)
+  lints 5.1.1 (6.1.0 available)
+  matcher 0.12.19 (0.12.20 available)
+  meta 1.17.0 (1.18.2 available)
+  mgrs_dart 2.0.0 (3.0.0 available)
+  path_provider_android 2.2.19 (2.3.1 available)
+  path_provider_foundation 2.4.2 (2.6.0 available)
+  pmtiles 1.3.0 (2.0.0 available)
+  proj4dart 2.1.0 (3.0.0 available)
+  protobuf 3.1.0 (6.0.0 available)
+  riverpod 2.6.1 (3.2.1 available)
+  shared_preferences 2.5.3 (2.5.5 available)
+  shared_preferences_android 2.4.13 (2.4.23 available)
+  shared_preferences_foundation 2.5.4 (2.5.6 available)
+  shared_preferences_platform_interface 2.4.1 (2.4.2 available)
+  source_gen 4.2.0 (4.2.3 available)
+  source_span 1.10.1 (1.10.2 available)
+  sqlite3 2.9.4 (3.3.1 available)
+  sqlite3_flutter_libs 0.5.42 (0.6.0+eol available)
+  sqlparser 0.43.1 (0.44.4 available)
+  test_api 0.7.10 (0.7.12 available)
+  unicode 0.3.1 (1.1.9 available)
+  vector_math 2.2.0 (2.3.0 available)
+  vector_tile 2.0.1 (4.0.0 available)
+  vector_tile_renderer 5.2.1 (6.0.0 available)
+  vm_service 14.3.1 (15.2.0 available)
+Got dependencies!
+43 packages have newer versions incompatible with dependency constraints.
+Try `flutter pub outdated` for more information.
 Compiling lib/main.dart for the Web...                          
 Wasm dry run succeeded. Consider building and testing your application with the `--wasm` flag. See docs for more info: https://docs.flutter.dev/platform-integration/web/wasm
 Use --no-wasm-dry-run to disable these warnings.
 Target dart2js failed: ProcessException: Process exited abnormally with exit code 1:
-lib/screens/map_screen.dart:1427:8:
-Error: 'dispose' is already declared in this scope.
-  void dispose() {
-       ^^^^^^^
-lib/screens/map_screen.dart:94:8:
-Info: Previous declaration of 'dispose'.
-  void dispose() {
-       ^^^^^^^
-lib/screens/export_screen.dart:21:48:
-Error: The method 'exportToCsv' isn't defined for the type 'ExportService'.
- - 'ExportService' is from 'package:wammsee_app/services/export_service.dart' ('lib/services/export_service.dart').
-      final csv = await ExportService.instance.exportToCsv(points);
-                                               ^^^^^^^^^^^
-lib/screens/export_screen.dart:22:49:
-Error: The method 'getFilePath' isn't defined for the type 'ExportService'.
- - 'ExportService' is from 'package:wammsee_app/services/export_service.dart' ('lib/services/export_service.dart').
-      final path = await ExportService.instance.getFilePath('depth_points.csv');
-                                                ^^^^^^^^^^^
-lib/screens/export_screen.dart:23:36:
-Error: The method 'saveToFile' isn't defined for the type 'ExportService'.
- - 'ExportService' is from 'package:wammsee_app/services/export_service.dart' ('lib/services/export_service.dart').
-      await ExportService.instance.saveToFile(csv, 'depth_points.csv');
-                                   ^^^^^^^^^^
-lib/screens/export_screen.dart:49:52:
-Error: The method 'exportToGeoJson' isn't defined for the type 'ExportService'.
- - 'ExportService' is from 'package:wammsee_app/services/export_service.dart' ('lib/services/export_service.dart').
-      final geoJson = await ExportService.instance.exportToGeoJson(points);
-                                                   ^^^^^^^^^^^^^^^
-lib/screens/export_screen.dart:50:49:
-Error: The method 'getFilePath' isn't defined for the type 'ExportService'.
- - 'ExportService' is from 'package:wammsee_app/services/export_service.dart' ('lib/services/export_service.dart').
-      final path = await ExportService.instance.getFilePath('depth_points.geojson');
-                                                ^^^^^^^^^^^
-lib/screens/export_screen.dart:51:36:
-Error: The method 'saveToFile' isn't defined for the type 'ExportService'.
- - 'ExportService' is from 'package:wammsee_app/services/export_service.dart' ('lib/services/export_service.dart').
-      await ExportService.instance.saveToFile(geoJson, 'depth_points.geojson');
-                                   ^^^^^^^^^^
-lib/services/export_service.dart:7:41:
-Error: A value of type 'ExportService/*1*/' can't be assigned to a variable of type 'ExportService/*2*/'.
- - 'ExportService/*1*/' is from 'package:wammsee_app/services/export_service_base.dart' ('lib/services/export_service_base.dart').
- - 'ExportService/*2*/' is from 'package:wammsee_app/services/export_service.dart' ('lib/services/export_service.dart').
-  static final ExportService instance = createExportService();
-                                        ^
+lib/services/pmtiles_service_web.dart:15:36:
+Error: Undefined name 'PmTilesSource'.
+    final archive = PmTilesArchive(PmTilesSource.url(assetUrl));
+                                   ^^^^^^^^^^^^^
+lib/services/pmtiles_service_web.dart:15:21:
+Error: Couldn't find constructor 'PmTilesArchive'.
+    final archive = PmTilesArchive(PmTilesSource.url(assetUrl));
+                    ^^^^^^^^^^^^^^
 Error: Compilation failed.
   Command: /home/schaf/flutter_sdk/bin/cache/dart-sdk/bin/dart compile js --platform-binaries=/home/schaf/flutter_sdk/bin/cache/flutter_web_sdk/kernel --invoker=flutter_tool -Ddart.vm.product=true -DFLUTTER_VERSION=3.41.9 -DFLUTTER_CHANNEL=stable -DFLUTTER_GIT_URL=https://github.com/flutter/flutter.git -DFLUTTER_FRAMEWORK_REVISION=00b0c91f06 -DFLUTTER_ENGINE_REVISION=42d3d75a56 -DFLUTTER_DART_VERSION=3.11.5 -DFLUTTER_WEB_USE_SKIA=true -DFLUTTER_WEB_USE_SKWASM=false -DFLUTTER_WEB_CANVASKIT_URL=https://www.gstatic.com/flutter-canvaskit/42d3d75a56efe1a2e9902f52dc8006099c45d937/ --native-null-assertions --no-source-maps -O4 --minify -o /home/schaf/projects/lake/lake_map/lake_mapper_app/.dart_tool/flutter_build/ebe13bb0e2e56314538f02757eec920c/app.dill --packages=/home/schaf/projects/lake/lake_map/lake_mapper_app/.dart_tool/package_config.json --cfe-only /home/schaf/projects/lake/lake_map/lake_mapper_app/.dart_tool/flutter_build/ebe13bb0e2e56314538f02757eec920c/main.dart
 #0      RunResult.throwException (package:flutter_tools/src/base/process.dart:153:5)
@@ -90,5 +102,5 @@ Error: Compilation failed.
 #20     main (package:flutter_tools/executable.dart:103:3)
 <asynchronous suspension>
 
-Compiling lib/main.dart for the Web...                             61.9s
+Compiling lib/main.dart for the Web...                             41.5s
 Error: Failed to compile application for the Web.
