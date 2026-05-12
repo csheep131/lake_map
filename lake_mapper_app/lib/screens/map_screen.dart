@@ -9,6 +9,7 @@ import 'package:intl/intl.dart';
 import '../database/app_database.dart';
 import '../models/depth_point.dart';
 
+import '../config/map_tile_config.dart';
 import '../theme/app_colors.dart';
 import '../data/wammsee_polygon.dart';
 import '../services/data_refresh_service.dart';
@@ -605,7 +606,8 @@ class _MapScreenState extends State<MapScreen> {
                     // OSM tiles only in map mode
                     if (!_abyssMode)
                       TileLayer(
-                        urlTemplate: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
+                        urlTemplate: getTileUrl(MapTileConfig.provider),
+                        userAgentPackageName: 'com.wammsee.app',
                       ),
 
                     // Water dot texture (map mode only)
