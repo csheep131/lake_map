@@ -9,7 +9,10 @@ import 'package:intl/intl.dart';
 import '../database/app_database.dart';
 import '../models/depth_point.dart';
 
-import '../config/map_tile_config.dart';
+import '../config/map_tile_config.dart'; // Deprecated, keep for reference
+import '../config/map_config.dart';
+import '../services/pmtiles_service.dart';
+import 'package:vector_map_tiles/vector_map_tiles.dart';
 import '../theme/app_colors.dart';
 import '../data/wammsee_polygon.dart';
 import '../services/data_refresh_service.dart';
@@ -42,12 +45,14 @@ class _MapScreenState extends State<MapScreen> {
   
   WebGpsService? _webGpsService;
   WebGpsState _webGpsState = WebGpsState();
+  VectorTileProvider? _vectorTileProvider;
 
   static const _wammseeCenter = LatLng(49.346970, 8.446897);
 
   @override
   void initState() {
     super.initState();
+    _initVectorTiles();
     if (kIsWeb) {
       _webGpsService = getWebGpsService((newState) {
         if (mounted) {
@@ -90,6 +95,19 @@ class _MapScreenState extends State<MapScreen> {
     _webGpsService?.stop();
     DataRefreshService.instance.removeListener(_onRefresh);
     super.dispose();
+  }
+
+  Future<void> _initVectorTiles() async {
+    try {
+      final provider = await PmTilesService.initTileProvider();
+      if (mounted) {
+        setState(() {
+          _vectorTileProvider = provider;
+        });
+      }
+    } catch (e) {
+      debugPrint('Failed to initialize PMTiles: $e');
+    }
   }
 
   Future<void> _loadData() async {
@@ -594,8 +612,11 @@ class _MapScreenState extends State<MapScreen> {
                   options: MapOptions(
                     initialCenter: _points.isNotEmpty
                         ? LatLng(_points.first.latitude, _points.first.longitude)
-                        : _wammseeCenter,
-                    initialZoom: 15,
+                        : MapConfig.initialCenter,
+                    initialZoom: MapConfig.initialZoom,
+                    minZoom: MapConfig.minZoom,
+                    maxZoom: MapConfig.maxZoom,
+                    cameraConstraint: CameraConstraint.contain(bounds: MapConfig.cameraBounds),
                     onTap: _onMapTap,
                     interactionOptions: const InteractionOptions(
                       flags: InteractiveFlag.all,
@@ -603,12 +624,16 @@ class _MapScreenState extends State<MapScreen> {
                     backgroundColor: _abyssMode ? Colors.transparent : const Color(0xFFF5F5F5),
                   ),
                   children: [
-                    // OSM tiles only in map mode
+                    // PMTiles vector tiles only in map mode
                     if (!_abyssMode)
-                      TileLayer(
-                        urlTemplate: getTileUrl(MapTileConfig.provider),
-                        userAgentPackageName: 'com.wammsee.app',
-                      ),
+                      _vectorTileProvider != null
+                          ? VectorTileLayer(
+                              theme: PmTilesService.getMapTheme(),
+                              tileProviders: TileProviders({
+                                'protomaps': _vectorTileProvider!,
+                              }),
+                            )
+                          : const Center(child: CircularProgressIndicator()),
 
                     // Water dot texture (map mode only)
                     if (!_abyssMode)

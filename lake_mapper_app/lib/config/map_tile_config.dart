@@ -1,6 +1,6 @@
 /// Map Tile Configuration
 /// Central configuration for tile providers
-
+@Deprecated('Use MapConfig with PMTiles instead for offline vector maps')
 class MapTileConfig {
   /// Current provider: change to use different tile source
   static final TileProvider provider = TileProvider.freeMap;
@@ -10,6 +10,7 @@ class MapTileConfig {
 }
 
 /// Tile provider options
+@Deprecated('Use MapConfig with PMTiles instead')
 enum TileProvider {
   /// Free, no API key needed
   freeMap,
@@ -25,6 +26,7 @@ enum TileProvider {
 }
 
 /// Tile URLs and settings per provider
+@Deprecated('Use MapConfig with PMTiles instead')
 class TileSettings {
   // Free OpenStreetMap alternative: OpenFreeMap
   static const freeMapUrl = 'https://tiles.openfreemap.org/styles/liberty/{z}/{x}/{y}.png';
@@ -44,6 +46,7 @@ class TileSettings {
 }
 
 /// Get URL template for current provider
+@Deprecated('Use MapConfig with PMTiles instead')
 String getTileUrl(TileProvider prov) {
   switch (prov) {
     case TileProvider.freeMap:
@@ -58,6 +61,7 @@ String getTileUrl(TileProvider prov) {
 }
 
 /// Get attribution for current provider
+@Deprecated('Use MapConfig with PMTiles instead')
 String getAttribution(TileProvider prov) {
   switch (prov) {
     case TileProvider.freeMap:

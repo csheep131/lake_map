@@ -124,7 +124,7 @@ class SyncService {
           'depth_m': point.depth,
           'latitude': point.latitude,
           'longitude': point.longitude,
-          'accuracy_m': point.accuracy,
+          'accuracy_m': point.accuracyM,
           'note': point.note,
         };
         await _syncRequest(method: 'POST', endpoint: '/depths', body: payload);
