@@ -8,8 +8,11 @@ import '../services/sync_service.dart';
 import '../services/auth_service.dart';
 import '../services/data_refresh_service.dart';
 import '../utils/geo_utils.dart';
+import 'package:flutter/foundation.dart' show kIsWeb;
 import '../data/wammsee_polygon.dart';
 import '../theme/app_colors.dart';
+import '../services/web_gps_wrapper.dart';
+import '../services/web_gps_state.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -32,10 +35,24 @@ class _HomeScreenState extends State<HomeScreen> {
   int? _lastPointNumber;
   List<DepthPoint> _recentPoints = [];
 
+  WebGpsService? _webGpsService;
+  WebGpsState _webGpsState = WebGpsState();
+
+  double? get _currentLat => kIsWeb ? _webGpsState.latitude : _currentPosition?.latitude;
+  double? get _currentLon => kIsWeb ? _webGpsState.longitude : _currentPosition?.longitude;
 
   @override
   void initState() {
     super.initState();
+    if (kIsWeb) {
+      _webGpsService = getWebGpsService((newState) {
+        if (mounted) {
+          setState(() {
+            _webGpsState = newState;
+          });
+        }
+      });
+    }
     _init();
     DataRefreshService.instance.addListener(_onRefresh);
   }
@@ -100,6 +117,7 @@ class _HomeScreenState extends State<HomeScreen> {
 
   @override
   void dispose() {
+    _webGpsService?.stop();
     DataRefreshService.instance.removeListener(_onRefresh);
     _depthController.dispose();
     _noteController.dispose();
@@ -107,6 +125,11 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   Future<void> _loadCurrentPosition() async {
+    if (kIsWeb) {
+      _webGpsService?.checkStatusAndStart();
+      return;
+    }
+
     setState(() {
       _errorMessage = null;
       _isSearchingGps = true;
@@ -174,12 +197,12 @@ class _HomeScreenState extends State<HomeScreen> {
       return;
     }
 
-    if (_currentPosition == null) {
+    if (_currentLat == null || _currentLon == null) {
       _showError('Keine GPS-Position verfügbar');
       return;
     }
 
-    final currentLatLng = LatLng(_currentPosition!.latitude, _currentPosition!.longitude);
+    final currentLatLng = LatLng(_currentLat!, _currentLon!);
     if (!isPointInPolygon(currentLatLng, wammseePolygon)) {
       _showError('GPS liegt außerhalb des Wammsee. Tiefenmessung nur im See möglich. Oder: Kartenansicht (Rechts) → manuell tippen');
       return;
@@ -191,8 +214,8 @@ class _HomeScreenState extends State<HomeScreen> {
       final wammsee = await AppDatabase.instance.getOrCreateWammsee();
       final point = DepthPoint(
         lakeId: wammsee.id!,
-        latitude: _currentPosition!.latitude,
-        longitude: _currentPosition!.longitude,
+        latitude: _currentLat!,
+        longitude: _currentLon!,
         depthM: depth,
         note: _noteController.text.trim().isEmpty ? null : _noteController.text.trim(),
         createdAt: DateTime.now(),
@@ -244,7 +267,7 @@ class _HomeScreenState extends State<HomeScreen> {
   Color _getDepthColor(double depth) => AppColors.depthColor(depth);
 
   Future<void> _duplicateLastPoint() async {
-    if (_lastPointNumber == null || _currentPosition == null) return;
+    if (_lastPointNumber == null || _currentLat == null || _currentLon == null) return;
 
     final lastPoint = _recentPoints.firstWhere((p) => p.pointNumber == _lastPointNumber);
 
@@ -253,8 +276,8 @@ class _HomeScreenState extends State<HomeScreen> {
     try {
       final point = DepthPoint(
         lakeId: lastPoint.lakeId,
-        latitude: _currentPosition!.latitude,
-        longitude: _currentPosition!.longitude,
+        latitude: _currentLat!,
+        longitude: _currentLon!,
         depthM: lastPoint.depthM,
         note: lastPoint.note,
         createdAt: DateTime.now(),
@@ -283,7 +306,151 @@ class _HomeScreenState extends State<HomeScreen> {
     }
   }
 
+  Widget _buildWebGpsCard() {
+    Color pointColor;
+    String statusText;
+    String? errorText;
+
+    switch (_webGpsState.status) {
+      case WebGpsStatus.available:
+        pointColor = AppColors.success;
+        statusText = 'GPS aktiv';
+        break;
+      case WebGpsStatus.checking:
+      case WebGpsStatus.searching:
+        pointColor = AppColors.amber;
+        statusText = 'GPS wird gesucht...';
+        break;
+      case WebGpsStatus.desktopNoGps:
+        pointColor = AppColors.error;
+        statusText = 'Desktop ohne GPS';
+        errorText = 'Kein GPS gefunden';
+        break;
+      case WebGpsStatus.permissionDenied:
+        pointColor = AppColors.error;
+        statusText = 'Standortberechtigung fehlt';
+        errorText = _webGpsState.errorMessage;
+        break;
+      case WebGpsStatus.timeout:
+        pointColor = AppColors.error;
+        statusText = 'GPS Timeout';
+        errorText = _webGpsState.errorMessage;
+        break;
+      case WebGpsStatus.error:
+        pointColor = AppColors.error;
+        statusText = 'GPS Fehler';
+        errorText = _webGpsState.errorMessage;
+        break;
+      case WebGpsStatus.requiresHttps:
+        pointColor = AppColors.error;
+        statusText = 'Sicherheitsproblem';
+        errorText = _webGpsState.errorMessage;
+        break;
+      case WebGpsStatus.unknown:
+      default:
+        pointColor = AppColors.textMuted;
+        statusText = 'GPS Inaktiv';
+        break;
+    }
+
+    return Container(
+      decoration: BoxDecoration(
+        color: AppColors.surface,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: AppColors.surfaceHighlight),
+      ),
+      padding: const EdgeInsets.all(16),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Row(
+                children: [
+                  Container(
+                    width: 8,
+                    height: 8,
+                    decoration: BoxDecoration(
+                      color: pointColor,
+                      shape: BoxShape.circle,
+                      boxShadow: [
+                        BoxShadow(color: pointColor.withValues(alpha: 0.4), blurRadius: 8),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  Text(
+                    statusText.toUpperCase(),
+                    style: TextStyle(fontFamily: 'RobotoMono', 
+                      fontSize: 11,
+                      fontWeight: FontWeight.w600,
+                      color: pointColor,
+                      letterSpacing: 1.2,
+                    ),
+                  ),
+                ],
+              ),
+              if (_lastPointNumber != null)
+                Text(
+                  '#$_lastPointNumber',
+                  style: TextStyle(fontFamily: 'RobotoMono', 
+                    fontSize: 12,
+                    color: AppColors.cyan,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          if (_webGpsState.status == WebGpsStatus.available) ...[
+            _buildCoordRow('LAT', _webGpsState.latitude?.toStringAsFixed(6) ?? '-'),
+            const SizedBox(height: 4),
+            _buildCoordRow('LON', _webGpsState.longitude?.toStringAsFixed(6) ?? '-'),
+            const SizedBox(height: 8),
+
+          ] else if (errorText != null) ...[
+            Text(errorText, style: const TextStyle(color: AppColors.error)),
+            const SizedBox(height: 8),
+            SizedBox(
+              width: double.infinity,
+              child: OutlinedButton.icon(
+                onPressed: _loadCurrentPosition,
+                icon: const Icon(Icons.refresh, size: 18),
+                label: const Text('Erneut versuchen'),
+              ),
+            ),
+          ] else if (_webGpsState.status == WebGpsStatus.searching || _webGpsState.status == WebGpsStatus.checking)
+            const Center(
+              child: Padding(
+                padding: EdgeInsets.all(16),
+                child: CircularProgressIndicator(color: AppColors.cyan),
+              ),
+            )
+          else ...[
+            const Text('GPS wurde noch nicht gestartet.', style: TextStyle(color: AppColors.textMuted, fontSize: 13)),
+            const SizedBox(height: 12),
+            SizedBox(
+              width: double.infinity,
+              child: ElevatedButton.icon(
+                onPressed: _loadCurrentPosition,
+                icon: const Icon(Icons.location_searching),
+                label: const Text('GPS STARTEN'),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: AppColors.cyan.withValues(alpha: 0.2),
+                  foregroundColor: AppColors.cyan,
+                ),
+              ),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+
   Widget _buildGpsCard() {
+    if (kIsWeb) return _buildWebGpsCard();
+
     return Container(
       decoration: BoxDecoration(
         color: AppColors.surface,
@@ -432,9 +599,9 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   Widget _buildSaveButton() {
-    final bool hasGps = _currentPosition != null;
+    final bool hasGps = kIsWeb ? (_webGpsState.status == WebGpsStatus.available && _webGpsState.latitude != null) : _currentPosition != null;
     final bool inLake = hasGps && isPointInPolygon(
-      LatLng(_currentPosition!.latitude, _currentPosition!.longitude),
+      LatLng(_currentLat!, _currentLon!),
       wammseePolygon,
     );
     final bool canSave = !_isLoading && hasGps && inLake;

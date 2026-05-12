@@ -2,6 +2,7 @@ import 'package:drift/drift.dart';
 import 'package:drift_flutter/drift_flutter.dart';
 import '../models/lake.dart';
 import '../models/depth_point.dart';
+import 'package:flutter/foundation.dart';
 import 'tables.dart';
 
 export 'tables.dart';
@@ -12,16 +13,39 @@ part 'app_database.g.dart';
 class AppDatabase extends _$AppDatabase {
   static final AppDatabase instance = AppDatabase._internal();
 
-  AppDatabase._internal() : super(driftDatabase(name: 'lake_mapper'));
+  AppDatabase._internal()
+      : super(driftDatabase(
+          name: 'lake_mapper',
+          web: DriftWebOptions(
+            sqlite3Wasm: Uri.parse('sqlite3.wasm'),
+            driftWorker: Uri.parse('drift_worker.js'),
+            onResult: (result) {
+              debugPrint('Drift Web DB: ${result.chosenImplementation}');
+              if (result.missingFeatures.isNotEmpty) {
+                debugPrint('Drift Web missing features: ${result.missingFeatures}');
+              }
+            },
+          ),
+        ));
 
   @override
-  int get schemaVersion => 1;
+  int get schemaVersion => 2;
 
   @override
   MigrationStrategy get migration {
     return MigrationStrategy(
-      onCreate: (Migrator m) async {},
-      onUpgrade: (Migrator m, int from, int to) async {},
+      onCreate: (Migrator m) async {
+        await m.createAll();
+      },
+      onUpgrade: (Migrator m, int from, int to) async {
+        if (from < 2) {
+          // V1 hatte leere onCreate -> Tabellen evtl. nicht angelegt.
+          // Da client-seitige DB und Server-Sync vorhanden: Tabellen neu anlegen.
+          await m.deleteTable(depthPointsTable.actualTableName);
+          await m.deleteTable(lakesTable.actualTableName);
+          await m.createAll();
+        }
+      },
     );
   }
 

@@ -14,6 +14,9 @@ import '../data/wammsee_polygon.dart';
 import '../services/data_refresh_service.dart';
 import '../services/location_service.dart';
 import '../utils/geo_utils.dart';
+import 'package:flutter/foundation.dart' show kIsWeb;
+import '../services/web_gps_wrapper.dart';
+import '../services/web_gps_state.dart';
 
 class MapScreen extends StatefulWidget {
   const MapScreen({super.key});
@@ -35,12 +38,40 @@ class _MapScreenState extends State<MapScreen> {
   List<Polygon> _cachedAbyssDepthContours = [];
   List<Polyline> _cachedConnectionLines = [];
   List<Polyline> _cachedSonarGrid = [];
+  
+  WebGpsService? _webGpsService;
+  WebGpsState _webGpsState = WebGpsState();
 
   static const _wammseeCenter = LatLng(49.346970, 8.446897);
 
   @override
   void initState() {
     super.initState();
+    if (kIsWeb) {
+      _webGpsService = getWebGpsService((newState) {
+        if (mounted) {
+          setState(() {
+            _webGpsState = newState;
+            if (newState.status == WebGpsStatus.available) {
+               // Update position for the blue dot
+               _currentPosition = Position(
+                 latitude: newState.latitude ?? 0,
+                 longitude: newState.longitude ?? 0,
+                 timestamp: DateTime.now(),
+                 accuracy: newState.accuracy ?? 0,
+                 altitude: 0,
+                 heading: 0,
+                 speed: 0,
+                 speedAccuracy: 0,
+                 altitudeAccuracy: 0,
+                 headingAccuracy: 0,
+               );
+            }
+          });
+        }
+      });
+      _webGpsService?.checkStatusAndStart();
+    }
     _cachedGridPoints = _generateGridPoints();
     _loadData();
     DataRefreshService.instance.addListener(_onRefresh);
@@ -55,6 +86,7 @@ class _MapScreenState extends State<MapScreen> {
   @override
   void dispose() {
     _gpsLockTimer?.cancel();
+    _webGpsService?.stop();
     DataRefreshService.instance.removeListener(_onRefresh);
     super.dispose();
   }
@@ -69,21 +101,22 @@ class _MapScreenState extends State<MapScreen> {
         points = await AppDatabase.instance.getDepthPointsForLake(wammsee.id!);
       }
 
-      Position? position;
-      try {
-        position = await LocationService.instance.getCurrentPosition();
-      } catch (e) {
-        position = null;
-      }
-
-      _cachedDepthContours = _buildDepthContourPolygons(points);
       _cachedAbyssDepthContours = _buildAbyssDepthContourPolygons(points);
       _cachedConnectionLines = _buildConnectionLines(points);
       _cachedSonarGrid = _buildSonarGrid();
 
+      if (!kIsWeb) {
+        Position? position;
+        try {
+          position = await LocationService.instance.getCurrentPosition();
+        } catch (e) {
+          position = null;
+        }
+        setState(() => _currentPosition = position);
+      }
+
       setState(() {
         _points = points;
-        _currentPosition = position;
         _isLoading = false;
       });
     } catch (e) {
