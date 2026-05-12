@@ -47,7 +47,7 @@ class DepthPoint {
       depthM: (map['depth_m'] as num?)?.toDouble() ?? 0.0,
       accuracyM: (map['accuracy_m'] as num?)?.toDouble(),
       note: map['note'] as String?,
-      createdAt: DateTime.tryParse(map['created_at'] as String? ?? '') ?? DateTime.now(),
+      createdAt: DateTime.tryParse(map['measured_at'] as String? ?? map['created_at'] as String? ?? '') ?? DateTime.now(),
       pointNumber: (map['point_number'] as num?)?.toInt(),
     );
   }

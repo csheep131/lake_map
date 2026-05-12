@@ -314,10 +314,44 @@ async function handleRequest(req, res) {
 }
 
 const server = http.createServer((req, res) => {
-  handleRequest(req, res).catch(err => {
-    console.error('Unhandled error:', err);
-    res.writeHead(500, { 'Content-Type': 'text/plain' });
-    res.end('Internal Server Error');
+  const url = new URL(req.url, `http://localhost:${PORT}`);
+  const pathname = url.pathname;
+
+  // API-Routen NUR wenn Prefix /api oder bekannte API-Endpunkte
+  const apiPrefixes = ['/login', '/logout', '/health', '/data', '/depths', '/lakes'];
+  if (apiPrefixes.some(p => pathname.startsWith(p))) {
+    handleApiRequest(req, res).catch(err => {
+      console.error('API error:', err);
+      res.writeHead(500, { 'Content-Type': 'text/plain' });
+      res.end('Internal Server Error');
+    });
+    return;
+  }
+
+  // Alles andere: statische Dateien
+  const filePath = path.join(__dirname, 'public', pathname);
+  const ext = path.extname(filePath).toLowerCase();
+  const contentType = {
+    '.html': 'text/html',
+    '.css': 'text/css',
+    '.js': 'application/javascript',
+    '.json': 'application/json',
+    '.png': 'image/png',
+    '.svg': 'image/svg+xml',
+  }[ext] || 'application/octet-stream';
+
+  fs.readFile(filePath, (err, data) => {
+    if (err) {
+      // index.html als Fallback
+      const indexPath = path.join(__dirname, 'public', 'index.html');
+      fs.readFile(indexPath, (err2, data2) => {
+        res.writeHead(200, { 'Content-Type': 'text/html' });
+        res.end(data2 || 'Not found');
+      });
+      return;
+    }
+    res.writeHead(200, { 'Content-Type': contentType });
+    res.end(data);
   });
 });
 
