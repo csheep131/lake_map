@@ -573,7 +573,6 @@ class _MapScreenState extends State<MapScreen> {
                     if (!_abyssMode)
                       TileLayer(
                         urlTemplate: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
-                        userAgentPackageName: 'de.tom.wammsee_mapper',
                       ),
 
                     // Water dot texture (map mode only)

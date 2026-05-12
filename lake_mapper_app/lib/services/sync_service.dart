@@ -12,6 +12,7 @@ class SyncService {
   SyncService._init();
 
   String? _databaseName;
+  String? _authToken;
 
   Future<void> setDatabaseName(String name) async {
     _databaseName = name;
@@ -19,12 +20,20 @@ class SyncService {
     await prefs.setString('database_name', name);
   }
 
+  Future<void> setAuthToken(String token) async {
+    _authToken = token;
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString('auth_token', token);
+  }
+
   Future<void> loadDatabaseName() async {
     final prefs = await SharedPreferences.getInstance();
     _databaseName = prefs.getString('database_name');
+    _authToken = prefs.getString('auth_token');
   }
 
-  String get databaseName => _databaseName ?? 'default';
+  String get databaseName => _databaseName ?? 'wammsee';
+  bool get hasToken => _authToken != null && _authToken!.isNotEmpty;
 
   Future<bool> isOnline() async {
     try {
@@ -43,24 +52,24 @@ class SyncService {
     Map<String, dynamic>? body,
   }) async {
     final url = Uri.parse('$_baseUrl$endpoint');
-    
+
+    // Header mit Auth
+    final headers = <String, String>{
+      'Content-Type': 'application/json',
+    };
+    if (_authToken != null && _authToken!.isNotEmpty) {
+      headers['Authorization'] = 'Bearer $_authToken';
+    }
+
     http.Response response;
     if (method == 'GET') {
-      response = await http.get(url);
+      response = await http.get(url, headers: headers);
     } else if (method == 'POST') {
-      response = await http.post(
-        url,
-        headers: {'Content-Type': 'application/json'},
-        body: jsonEncode(body),
-      );
+      response = await http.post(url, headers: headers, body: jsonEncode(body));
     } else if (method == 'PUT') {
-      response = await http.put(
-        url,
-        headers: {'Content-Type': 'application/json'},
-        body: jsonEncode(body),
-      );
+      response = await http.put(url, headers: headers, body: jsonEncode(body));
     } else if (method == 'DELETE') {
-      response = await http.delete(url);
+      response = await http.delete(url, headers: headers);
     } else {
       throw Exception('Unknown method: $method');
     }
@@ -86,89 +95,92 @@ class SyncService {
   }
 
   Future<SyncResult> syncAll() async {
+    // Falls kein Name gesetzt, Standard-DB 'wammsee' verwenden
     if (_databaseName == null) {
-      throw Exception('Database name not set');
+      _databaseName = 'wammsee';
     }
 
     final lastSync = await getLastSyncTime();
     int uploaded = 0;
     int downloaded = 0;
 
-    try {
-      final localPoints = await AppDatabase.instance.getAllDepthPoints();
-      final localLakes = await AppDatabase.instance.getAllLakes();
+    final localPoints = await AppDatabase.instance.getAllDepthPoints();
+    final localLakes = await AppDatabase.instance.getAllLakes();
 
-      final serverData = await _syncRequest(method: 'GET', endpoint: '/all');
-      
-      final serverPoints = (serverData['depth_points'] as List<dynamic>?)
-          ?.map((p) => DepthPoint.fromMap(p as Map<String, dynamic>))
-          .toList() ?? [];
-      
-      final serverLakes = (serverData['lakes'] as List<dynamic>?)
-          ?.map((l) => Lake.fromMap(l as Map<String, dynamic>))
-          .toList() ?? [];
+    final serverData = await _syncRequest(method: 'GET', endpoint: '/data');
 
-      final serverPointsMap = {for (var p in serverPoints) p.id: p};
-      final serverLakesMap = {for (var l in serverLakes) l.id: l};
+    final serverPoints = (serverData['depths'] as List<dynamic>?)
+        ?.map((p) => DepthPoint.fromMap(p as Map<String, dynamic>))
+        .toList() ?? [];
 
-      for (final lake in localLakes) {
-        if (lake.id != null && !serverLakesMap.containsKey(lake.id)) {
-          await _syncRequest(
-            method: 'POST',
-            endpoint: '/lakes',
-            body: lake.toMap(),
-          );
-        }
-      }
+    final serverLakes = (serverData['lakes'] as List<dynamic>?)
+        ?.map((l) => Lake.fromMap(l as Map<String, dynamic>))
+        .toList() ?? [];
 
-      for (final point in localPoints) {
-        final serverPoint = serverPointsMap[point.id];
-        if (serverPoint == null) {
-          await _syncRequest(
-            method: 'POST',
-            endpoint: '/depth_points',
-            body: point.toMap(),
-          );
-          uploaded++;
-        } else if (lastSync != null && point.id != null && point.createdAt.isAfter(lastSync)) {
-          await _syncRequest(
-            method: 'PUT',
-            endpoint: '/depth_points/${point.id}',
-            body: point.toMap(),
-          );
-          uploaded++;
-        }
-      }
-
-      final localPointsMap = {for (var p in localPoints) p.id!: p};
-      
-      for (final serverPoint in serverPoints) {
-        if (!localPointsMap.containsKey((serverPoint.id) != null && localPointsMap.containsKey(serverPoint.id))) {
-          await AppDatabase.instance.insertDepthPoint(serverPoint);
-          downloaded++;
-        }
-      }
-
-      final localLakesMap = {for (var l in localLakes) l.id: l};
-      
-      for (final serverLake in serverLakes) {
-        if (!localLakesMap.containsKey(serverLake.id)) {
-          await AppDatabase.instance.insertLake(serverLake);
-        }
-      }
-
-      await setLastSyncTime(DateTime.now().toUtc());
-
-      return SyncResult(uploaded: uploaded, downloaded: downloaded);
-    } catch (e) {
-      rethrow;
+    // Server-Maps erstellen mit null-safe keys
+    final serverPointsMap = <int, DepthPoint>{};
+    for (final p in serverPoints) {
+      if (p.id != null) serverPointsMap[p.id!] = p;
     }
+    final serverLakesMap = <int, Lake>{};
+    for (final l in serverLakes) {
+      if (l.id != null) serverLakesMap[l.id!] = l;
+    }
+
+    // Upload local lakes
+    for (final lake in localLakes) {
+      if (lake.id != null && !serverLakesMap.containsKey(lake.id)) {
+        await _syncRequest(method: 'POST', endpoint: '/lakes', body: lake.toMap());
+      }
+    }
+
+    // Upload local points
+    for (final point in localPoints) {
+      if (point.id == null) continue;
+      final serverPoint = serverPointsMap[point.id];
+      if (serverPoint == null) {
+        await _syncRequest(method: 'POST', endpoint: '/depth_points', body: point.toMap());
+        uploaded++;
+      } else if (lastSync != null && point.createdAt.isAfter(lastSync)) {
+        await _syncRequest(method: 'PUT', endpoint: '/depth_points/${point.id}', body: point.toMap());
+        uploaded++;
+      }
+    }
+
+    // Local maps erstellen mit null-safe keys
+    final localPointsMap = <int, DepthPoint>{};
+    for (final p in localPoints) {
+      if (p.id != null) localPointsMap[p.id!] = p;
+    }
+    final localLakesMap = <int, Lake>{};
+    for (final l in localLakes) {
+      if (l.id != null) localLakesMap[l.id!] = l;
+    }
+
+    // Download server points
+    for (final serverPoint in serverPoints) {
+      if (serverPoint.id == null) continue;
+      if (!localPointsMap.containsKey(serverPoint.id)) {
+        await AppDatabase.instance.insertDepthPoint(serverPoint);
+        downloaded++;
+      }
+    }
+
+    // Download server lakes
+    for (final serverLake in serverLakes) {
+      if (serverLake.id == null) continue;
+      if (!localLakesMap.containsKey(serverLake.id)) {
+        await AppDatabase.instance.insertLake(serverLake);
+      }
+    }
+
+    await setLastSyncTime(DateTime.now().toUtc());
+    return SyncResult(uploaded: uploaded, downloaded: downloaded);
   }
 }
 
 class SyncResult {
   final int uploaded;
   final int downloaded;
-
   SyncResult({required this.uploaded, required this.downloaded});
 }

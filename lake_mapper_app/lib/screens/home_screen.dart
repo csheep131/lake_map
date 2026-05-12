@@ -5,6 +5,7 @@ import '../database/app_database.dart';
 import '../models/depth_point.dart';
 import '../services/location_service.dart';
 import '../services/sync_service.dart';
+import '../services/auth_service.dart';
 import '../services/data_refresh_service.dart';
 import '../utils/geo_utils.dart';
 import '../data/wammsee_polygon.dart';
@@ -729,6 +730,32 @@ class _HomeScreenState extends State<HomeScreen> {
                       fontSize: 11,
                       color: AppColors.cyan,
                     ),
+                  ),
+                ),
+              if (!authService.isLoggedIn)
+                Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 14),
+                  margin: const EdgeInsets.only(bottom: 12),
+                  decoration: BoxDecoration(
+                    color: AppColors.amber.withValues(alpha: 0.1),
+                    borderRadius: BorderRadius.circular(8),
+                    border: Border.all(color: AppColors.amber.withValues(alpha: 0.4)),
+                  ),
+                  child: Row(
+                    children: [
+                      const Icon(Icons.info_outline, size: 18, color: AppColors.amber),
+                      const SizedBox(width: 10),
+                      Expanded(
+                        child: Text(
+                          'Bitte unter Setup anmelden um Daten zu synchronisieren.',
+                          style: TextStyle(
+                            fontSize: 12,
+                            color: AppColors.amber,
+                          ),
+                        ),
+                      ),
+                    ],
                   ),
                 ),
               _buildGpsCard(),

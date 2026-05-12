@@ -38,14 +38,14 @@ class DepthPoint {
   factory DepthPoint.fromMap(Map<String, dynamic> map) {
     return DepthPoint(
       id: map['id'] as int?,
-      lakeId: map['lake_id'] as int,
-      latitude: map['latitude'] as double,
-      longitude: map['longitude'] as double,
-      depthM: map['depth_m'] as double,
-      accuracyM: map['accuracy_m'] as double?,
+      lakeId: (map['lake_id'] as num?)?.toInt() ?? 1,
+      latitude: (map['latitude'] as num?)?.toDouble() ?? 0.0,
+      longitude: (map['longitude'] as num?)?.toDouble() ?? 0.0,
+      depthM: (map['depth_m'] as num?)?.toDouble() ?? 0.0,
+      accuracyM: (map['accuracy_m'] as num?)?.toDouble(),
       note: map['note'] as String?,
-      createdAt: DateTime.parse(map['created_at'] as String),
-      pointNumber: map['point_number'] as int?,
+      createdAt: DateTime.tryParse(map['created_at'] as String? ?? '') ?? DateTime.now(),
+      pointNumber: (map['point_number'] as num?)?.toInt(),
     );
   }
 

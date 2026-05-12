@@ -20,8 +20,8 @@ class Lake {
   factory Lake.fromMap(Map<String, dynamic> map) {
     return Lake(
       id: map['id'] as int?,
-      name: map['name'] as String,
-      createdAt: DateTime.parse(map['created_at'] as String),
+      name: (map['name'] as String?) ?? 'Unknown',
+      createdAt: DateTime.tryParse(map['created_at'] as String? ?? '') ?? DateTime.now(),
     );
   }
 

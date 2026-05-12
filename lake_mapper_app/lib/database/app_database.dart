@@ -1,189 +1,199 @@
-import 'package:sqflite/sqflite.dart';
-import 'package:path/path.dart';
+import 'package:drift/drift.dart';
+import 'package:drift_flutter/drift_flutter.dart';
 import '../models/lake.dart';
 import '../models/depth_point.dart';
+import 'tables.dart';
 
-class AppDatabase {
-  static final AppDatabase instance = AppDatabase._init();
-  static Database? _database;
+export 'tables.dart';
 
-  AppDatabase._init();
+part 'app_database.g.dart';
 
-  Future<Database> get database async {
-    if (_database != null) return _database!;
-    _database = await _initDB('lake_mapper.db');
-    return _database!;
-  }
+@DriftDatabase(tables: [LakesTable, DepthPointsTable])
+class AppDatabase extends _$AppDatabase {
+  static final AppDatabase instance = AppDatabase._internal();
 
-  Future<Database> _initDB(String filePath) async {
-    final dbPath = await getDatabasesPath();
-    final path = join(dbPath, filePath);
+  AppDatabase._internal() : super(driftDatabase(name: 'lake_mapper'));
 
-    return await openDatabase(
-      path,
-      version: 2,
-      onCreate: _createDB,
-      onUpgrade: _migrateDB,
+  @override
+  int get schemaVersion => 1;
+
+  @override
+  MigrationStrategy get migration {
+    return MigrationStrategy(
+      onCreate: (Migrator m) async {},
+      onUpgrade: (Migrator m, int from, int to) async {},
     );
   }
 
-  Future<void> _createDB(Database db, int version) async {
-    await db.execute('''
-      CREATE TABLE lakes (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        name TEXT NOT NULL,
-        created_at TEXT NOT NULL
-      )
-    ''');
+  // --- Adapters ---
+  Lake _toLake(LakeData data) => Lake(
+        id: data.id,
+        name: data.name,
+        createdAt: data.createdAt,
+      );
 
-    await db.execute('''
-      CREATE TABLE depth_points (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        lake_id INTEGER NOT NULL,
-        latitude REAL NOT NULL,
-        longitude REAL NOT NULL,
-        depth_m REAL NOT NULL,
-        accuracy_m REAL,
-        note TEXT,
-        created_at TEXT NOT NULL,
-        point_number INTEGER,
-        FOREIGN KEY (lake_id) REFERENCES lakes (id)
-      )
-    ''');
+  DepthPoint _toDepthPoint(DepthPointData data) => DepthPoint(
+        id: data.id,
+        lakeId: data.lakeId,
+        latitude: data.latitude,
+        longitude: data.longitude,
+        depthM: data.depthM,
+        accuracyM: data.accuracyM,
+        note: data.note,
+        createdAt: data.createdAt,
+        pointNumber: data.pointNumber,
+      );
 
-    await db.execute('CREATE INDEX idx_depth_points_lake_id ON depth_points(lake_id)');
-    await db.execute('CREATE INDEX idx_depth_points_point_number ON depth_points(point_number)');
-
-    await db.insert('lakes', {
-      'name': 'Wammsee',
-      'created_at': DateTime.now().toIso8601String(),
-    });
-  }
-
-  Future<void> _migrateDB(Database db, int oldVersion, int newVersion) async {
-    if (oldVersion < 2) {
-      // Migration von Version 1 auf 2: accuracy_m Spalte hinzufügen
-      await db.execute('ALTER TABLE depth_points ADD COLUMN accuracy_m REAL');
-    }
-  }
-
+  // --- Lakes ---
   Future<int> insertLake(Lake lake) async {
-    final db = await database;
-    return await db.insert('lakes', lake.toMap());
+    return await into(lakesTable).insert(
+      LakesTableCompanion.insert(
+        name: lake.name,
+        createdAt: lake.createdAt,
+      ),
+    );
   }
 
   Future<List<Lake>> getAllLakes() async {
-    final db = await database;
-    final result = await db.query('lakes', orderBy: 'created_at DESC');
-    return result.map((map) => Lake.fromMap(map)).toList();
+    final data = await select(lakesTable).get();
+    return data.map(_toLake).toList();
   }
 
   Future<Lake?> getLakeById(int id) async {
-    final db = await database;
-    final result = await db.query('lakes', where: 'id = ?', whereArgs: [id]);
-    if (result.isEmpty) return null;
-    return Lake.fromMap(result.first);
+    final data = await (select(lakesTable)
+          ..where((t) => t.id.equals(id)))
+        .getSingleOrNull();
+    return data != null ? _toLake(data) : null;
   }
 
   Future<Lake> getOrCreateWammsee() async {
-    final db = await database;
-    final result = await db.query('lakes', where: 'name = ?', whereArgs: ['Wammsee']);
-    if (result.isNotEmpty) {
-      final lake = Lake.fromMap(result.first);
+    final existing = await (select(lakesTable)
+          ..where((t) => t.name.equals('Wammsee')))
+        .getSingleOrNull();
+
+    if (existing != null) {
+      final lake = _toLake(existing);
       await _seedTestDataIfNeeded(lake.id!);
       return lake;
     }
-    final id = await db.insert('lakes', {
-      'name': 'Wammsee',
-      'created_at': DateTime.now().toIso8601String(),
-    });
+
+    final id = await into(lakesTable).insert(
+      LakesTableCompanion.insert(
+        name: 'Wammsee',
+        createdAt: DateTime.now(),
+      ),
+    );
+
     await _seedTestDataIfNeeded(id);
     return Lake(id: id, name: 'Wammsee', createdAt: DateTime.now());
   }
 
   Future<void> _seedTestDataIfNeeded(int lakeId) async {
-    final db = await database;
-    final count = await db.rawQuery('SELECT COUNT(*) as cnt FROM depth_points WHERE lake_id = ?', [lakeId]);
-    final existing = (count.first['cnt'] as int?) ?? 0;
-    if (existing > 0) return;
+    final count = await (select(depthPointsTable)
+          ..where((t) => t.lakeId.equals(lakeId)))
+        .get();
+    if (count.isNotEmpty) return;
 
     final now = DateTime.now();
-    await db.insert('depth_points', {
-      'lake_id': lakeId,
-      'latitude': 49.34750,
-      'longitude': 8.44750,
-      'depth_m': 3.50,
-      'note': 'Testpunkt Nord – Schilfzone',
-      'created_at': now.subtract(const Duration(minutes: 5)).toIso8601String(),
-      'point_number': 1,
-    });
-    await db.insert('depth_points', {
-      'lake_id': lakeId,
-      'latitude': 49.34620,
-      'longitude': 8.44620,
-      'depth_m': 6.20,
-      'note': 'Testpunkt Süd – Tiefenbereich',
-      'created_at': now.subtract(const Duration(minutes: 2)).toIso8601String(),
-      'point_number': 2,
-    });
-  }
-
-  Future<int> insertDepthPoint(DepthPoint point) async {
-    final db = await database;
-    
-    int pointNumber = point.pointNumber ?? await getNextPointNumber(point.lakeId);
-    
-    return await db.insert('depth_points', point.copyWith(pointNumber: pointNumber).toMap());
-  }
-
-  Future<int> getNextPointNumber(int lakeId) async {
-    final db = await database;
-    final result = await db.rawQuery(
-      'SELECT MAX(point_number) as max_num FROM depth_points WHERE lake_id = ?',
-      [lakeId],
+    await into(depthPointsTable).insert(
+      DepthPointsTableCompanion.insert(
+        lakeId: lakeId,
+        latitude: 49.34750,
+        longitude: 8.44750,
+        depthM: 3.50,
+        note: const Value('Testpunkt Nord – Schilfzone'),
+        createdAt: now.subtract(const Duration(minutes: 5)),
+        pointNumber: const Value(1),
+      ),
     );
-    final maxNum = result.first['max_num'] as int?;
-    return (maxNum ?? 0) + 1;
+    await into(depthPointsTable).insert(
+      DepthPointsTableCompanion.insert(
+        lakeId: lakeId,
+        latitude: 49.34620,
+        longitude: 8.44620,
+        depthM: 6.20,
+        note: const Value('Testpunkt Süd – Tiefenbereich'),
+        createdAt: now.subtract(const Duration(minutes: 2)),
+        pointNumber: const Value(2),
+      ),
+    );
+  }
+
+  // --- Depth Points ---
+  Future<int> insertDepthPoint(DepthPoint point) async {
+    final pointNumber = point.pointNumber ?? await getNextPointNumber(point.lakeId);
+
+    return await into(depthPointsTable).insert(
+      DepthPointsTableCompanion.insert(
+        lakeId: point.lakeId,
+        latitude: point.latitude,
+        longitude: point.longitude,
+        depthM: point.depthM,
+        accuracyM: Value(point.accuracyM),
+        note: Value(point.note),
+        createdAt: point.createdAt,
+        pointNumber: Value(pointNumber),
+      ),
+    );
   }
 
   Future<List<DepthPoint>> getDepthPointsForLake(int lakeId) async {
-    final db = await database;
-    final result = await db.query(
-      'depth_points',
-      where: 'lake_id = ?',
-      whereArgs: [lakeId],
-      orderBy: 'created_at DESC',
-    );
-    return result.map((map) => DepthPoint.fromMap(map)).toList();
+    final data = await (select(depthPointsTable)
+          ..where((t) => t.lakeId.equals(lakeId))
+          ..orderBy([
+            (t) => OrderingTerm(
+                  expression: t.createdAt,
+                  mode: OrderingMode.desc,
+                ),
+          ]))
+        .get();
+    return data.map(_toDepthPoint).toList();
   }
 
   Future<List<DepthPoint>> getAllDepthPoints() async {
-    final db = await database;
-    final result = await db.query('depth_points', orderBy: 'created_at DESC');
-    return result.map((map) => DepthPoint.fromMap(map)).toList();
+    final data = await (select(depthPointsTable)
+          ..orderBy([
+            (t) => OrderingTerm(
+                  expression: t.createdAt,
+                  mode: OrderingMode.desc,
+                ),
+          ]))
+        .get();
+    return data.map(_toDepthPoint).toList();
   }
 
   Future<int> updateDepthPoint(DepthPoint point) async {
-    final db = await database;
-    return await db.update(
-      'depth_points',
-      point.toMap(),
-      where: 'id = ?',
-      whereArgs: [point.id],
-    );
+    return await (update(depthPointsTable)
+          ..where((t) => t.id.equals(point.id!)))
+        .write(
+          DepthPointsTableCompanion(
+            lakeId: Value(point.lakeId),
+            latitude: Value(point.latitude),
+            longitude: Value(point.longitude),
+            depthM: Value(point.depthM),
+            accuracyM: Value(point.accuracyM),
+            note: Value(point.note),
+            createdAt: Value(point.createdAt),
+            pointNumber: Value(point.pointNumber),
+          ),
+        );
   }
 
   Future<int> deleteDepthPoint(int id) async {
-    final db = await database;
-    return await db.delete(
-      'depth_points',
-      where: 'id = ?',
-      whereArgs: [id],
-    );
+    return await (delete(depthPointsTable)..where((t) => t.id.equals(id))).go();
   }
 
+  Future<int> getNextPointNumber(int lakeId) async {
+    final query = selectOnly(depthPointsTable)
+      ..addColumns([depthPointsTable.pointNumber.max()])
+      ..where(depthPointsTable.lakeId.equals(lakeId));
+    final row = await query.getSingle();
+    final maxNum = row.read(depthPointsTable.pointNumber.max());
+    return (maxNum ?? 0) + 1;
+  }
+
+  @override
   Future<void> close() async {
-    final db = await database;
-    db.close();
+    await super.close();
   }
 }

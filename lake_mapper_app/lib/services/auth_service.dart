@@ -1,3 +1,5 @@
+import 'dart:convert';
+import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 
 class AuthResult {
@@ -10,6 +12,8 @@ class AuthResult {
 }
 
 class AuthService {
+  static const _baseUrl = 'https://wammsee.arxlabs.dev';
+
   String? _token;
   String? _userId;
   String? _clubId;
@@ -27,44 +31,17 @@ class AuthService {
   }
 
   Future<AuthResult> login(String clubId, String password) async {
-    // Demo-Modus: Akzeptiere bestimmte Logins
-    // TODO: Echten Server-Endpunkt nutzen wenn bereit
-    final demoUsers = {
-      'wammsee': 'angelverein123',
-      'test': 'test123',
-    };
-
-    if (demoUsers.containsKey(clubId) && demoUsers[clubId] == password) {
-      _token = 'demo_token_${DateTime.now().millisecondsSinceEpoch}';
-      _userId = clubId;
-      _clubId = clubId;
-
-      // Speichern
-      final prefs = await SharedPreferences.getInstance();
-      await prefs.setString('auth_token', _token!);
-      await prefs.setString('user_id', _userId!);
-      await prefs.setString('club_id', _clubId!);
-
-      return AuthResult(
-        success: true,
-        token: _token,
-        userId: _userId,
-      );
-    }
-
-    // Echter Server-Check (auskommentiert bis Server bereit)
-    /*
     try {
       final response = await http.post(
-        Uri.parse('$_baseUrl/auth/login'),
+        Uri.parse('$_baseUrl/login'),
         headers: {'Content-Type': 'application/json'},
-        body: jsonEncode({'clubId': clubId, 'password': password}),
-      );
+        body: jsonEncode({'username': clubId, 'password': password}),
+      ).timeout(const Duration(seconds: 10));
 
       if (response.statusCode == 200) {
         final data = jsonDecode(response.body);
         _token = data['token'];
-        _userId = data['userId'];
+        _userId = data['username'] ?? clubId;
         _clubId = clubId;
 
         final prefs = await SharedPreferences.getInstance();
@@ -73,16 +50,34 @@ class AuthService {
         await prefs.setString('club_id', _clubId!);
 
         return AuthResult(success: true, token: _token, userId: _userId);
+      } else {
+        final data = jsonDecode(response.body);
+        return AuthResult(
+          success: false,
+          error: data['error'] ?? 'Login fehlgeschlagen',
+        );
       }
     } catch (e) {
-      return AuthResult(success: false, error: e.toString());
+      return AuthResult(success: false, error: 'Server nicht erreichbar: $e');
     }
-    */
-
-    return AuthResult(success: false, error: 'Ungültige Club-ID oder Passwort');
   }
 
   Future<void> logout() async {
+    // Server-Logout versuchen (optional, Token wird serverseitig invalidiert)
+    if (_token != null) {
+      try {
+        await http.post(
+          Uri.parse('$_baseUrl/logout'),
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': 'Bearer $_token',
+          },
+        ).timeout(const Duration(seconds: 5));
+      } catch (_) {
+        // Ignorieren, lokal trotzdem ausloggen
+      }
+    }
+
     _token = null;
     _userId = null;
     _clubId = null;

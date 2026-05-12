@@ -27,7 +27,7 @@ class _LoginScreenState extends State<LoginScreen> {
     final password = _passwordController.text;
 
     if (clubId.isEmpty || password.isEmpty) {
-      setState(() => _error = 'Bitte Club-ID und Passwort eingeben');
+      setState(() => _error = 'Bitte Benutzername und Passwort eingeben');
       return;
     }
 
@@ -90,8 +90,8 @@ class _LoginScreenState extends State<LoginScreen> {
               TextField(
                 controller: _clubIdController,
                 decoration: InputDecoration(
-                  labelText: 'Club-ID',
-                  hintText: 'z.B. wammsee',
+                  labelText: 'Benutzername',
+                  hintText: 'Dein Benutzername',
                   prefixIcon: const Icon(Icons.group, color: AppColors.cyan),
                   filled: true,
                   fillColor: AppColors.surface,
@@ -167,34 +167,6 @@ class _LoginScreenState extends State<LoginScreen> {
                           fontSize: 16,
                         ),
                       ),
-              ),
-              const SizedBox(height: 24),
-
-              // Demo-Hinweis
-              Container(
-                padding: const EdgeInsets.all(12),
-                decoration: BoxDecoration(
-                  color: AppColors.surfaceHighlight.withValues(alpha: 0.3),
-                  borderRadius: BorderRadius.circular(8),
-                ),
-                child: Column(
-                  children: [
-                    Text(
-                      'Demo-Zugang:',
-                      style: TextStyle(
-                        color: AppColors.textMuted,
-                        fontSize: 12,
-                      ),
-                    ),
-                    Text(
-                      'Club-ID: wammsee | Passwort: angelverein123',
-                      style: TextStyle(fontFamily: 'RobotoMono', 
-                        fontSize: 12,
-                        color: AppColors.cyan,
-                      ),
-                    ),
-                  ],
-                ),
               ),
             ],
           ),

@@ -95,6 +95,14 @@ cd server
 PORT=3000 node server.js
 ```
 
+Der Server bietet:
+- **REST API** für Sync, Auth, Datenverwaltung
+- **Webseite** mit APK-Download, Screenshots & Anleitung
+- PostgreSQL-Datenbank-Backend
+
+API: `http://localhost:3000/health`
+Web: `http://localhost:3000/`
+
 Datenbank-Verzeichnis: `./data/{name}.json`
 
 ---
