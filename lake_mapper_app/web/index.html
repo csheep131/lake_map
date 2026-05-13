@@ -17,8 +17,92 @@
   <!-- Favicon -->
   <link rel="icon" type="image/png" href="favicon.png"/>
 
-  <title>Wammsee App</title>
-  <link rel="manifest" href="manifest.json">
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <script>
+    window.initWammseeMap = function(containerOrId) {
+      console.log("Initializing Leaflet map in container:", containerOrId);
+      var container = typeof containerOrId === 'string' ? document.getElementById(containerOrId) : containerOrId;
+      if (!container) {
+        console.error("Container not found");
+        return;
+      }
+      if (container._leaflet_map) return;
+
+      var map = L.map(container, {
+        center: [49.346970, 8.446897],
+        zoom: 15,
+        zoomControl: false,
+        attributionControl: false,
+        maxZoom: 14,
+        minZoom: 5
+      });
+      container._leaflet_map = map;
+
+      // Tiles
+      L.tileLayer('/tiles/{z}/{x}/{y}.png', {
+        maxZoom: 14, tileSize: 256, errorTileUrl: ''
+      }).addTo(map);
+
+      // Polygon
+      var coords = [
+        [49.3377254,8.4481856],[49.3377596,8.4478062],[49.3378036,8.4474488],
+        [49.3379039,8.4468111],[49.3380173,8.4463904],[49.3381671,8.4460428],
+        [49.3383479,8.4456287],[49.3385149,8.4453619],[49.3386272,8.4452098],
+        [49.3387617,8.4451788],[49.3409174,8.4454710],[49.3470848,8.4464984],
+        [49.3471647,8.4466079],[49.3472385,8.4469641],[49.3473173,8.4473496],
+        [49.3475760,8.4494798],[49.3476020,8.4497495],[49.3475922,8.4501154],
+        [49.3475604,8.4506719],[49.3474866,8.4511149],[49.3472964,8.4518402],
+        [49.3471937,8.4519525],[49.3470892,8.4519891],[49.3408598,8.4505239],
+        [49.3399618,8.4502800],[49.3395307,8.4501303],[49.3379323,8.4487278],
+        [49.3378115,8.4485930],[49.3377456,8.4483951]
+      ];
+      L.polygon(coords, {
+        color:'#00e6e6', weight:3, opacity:0.9, fillColor:'#00e6e6', fillOpacity:0.08
+      }).addTo(map);
+
+      // Label
+      L.marker([49.346970, 8.446897], {
+        icon: L.divIcon({
+          className: '',
+          html: '<div style="color:rgba(0,230,230,0.25);font-size:22px;font-weight:900;letter-spacing:4px;font-family:monospace;text-align:center;width:200px;margin-left:-100px;">WAMMSEE</div>',
+          iconSize: [0,0]
+        })
+      }).addTo(map);
+
+      // Depths
+      var markerCount = 0;
+      function addMarker(p) {
+        markerCount++;
+        var colors = [{m:2,c:'#4dd0e1'},{m:4,c:'#26c6da'},{m:6,c:'#00acc1'},{m:8,c:'#00838f'},{m:99,c:'#006064'}];
+        var col = '#006064';
+        for (var c of colors) { if (p.depthM < c.m) { col=c.c; break; } }
+        var num = p.pointNumber || markerCount;
+        L.circleMarker([p.latitude,p.longitude], {
+          radius:14, fillColor:col, fillOpacity:1, color:'#0a1929', weight:2
+        }).bindPopup('<b>#'+num+'</b> — '+p.depthM.toFixed(1)+' m').addTo(map);
+        L.marker([p.latitude,p.longitude], {
+          icon: L.divIcon({
+            className:'',
+            html:'<div style="color:#0a1929;font-size:9px;font-weight:900;font-family:monospace;text-align:center;width:28px;margin-left:-14px;margin-top:-6px;">'+num+'</div>',
+            iconSize:[0,0]
+          })
+        }).addTo(map);
+      }
+      
+      fetch('/api/depth-points').then(r => r.json()).then(pts => pts.forEach(addMarker)).catch(e => console.log('No depth API'));
+
+      // Automatische Grössenanpassung für Leaflet (fixt das graue-Karte-Problem)
+      var resizeObserver = new ResizeObserver(() => {
+        map.invalidateSize();
+      });
+      resizeObserver.observe(container);
+
+      // Backup-Timeouts
+      setTimeout(() => map.invalidateSize(), 500);
+      setTimeout(() => map.invalidateSize(), 1500);
+    };
+  </script>
 </head>
 <body>
   <script src="flutter_bootstrap.js" async></script>

@@ -2,7 +2,9 @@
 {{flutter_build_config}}
 
 _flutter.loader.load({
-  renderer: "canvaskit",
+  config: {
+    canvasKitVariant: "auto",
+  },
   serviceWorkerSettings: {
     serviceWorkerVersion: {{flutter_service_worker_version}}
   }

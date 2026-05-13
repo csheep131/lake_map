@@ -1,10 +1,14 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/foundation.dart' show kIsWeb;
 import '../theme/app_colors.dart';
 import '../screens/home_screen.dart';
 import '../screens/map_screen.dart';
 import '../screens/statistics_screen.dart';
 import '../screens/export_screen.dart';
 import '../screens/settings_screen.dart';
+// Web: iframe-basierte Karte (kein WebGL nötig)
+import '../screens/map_screen_web.dart' if (dart.library.io) '../screens/map_screen_stub.dart'
+    as map_web;
 
 class MainShell extends StatefulWidget {
   const MainShell({super.key});
@@ -16,12 +20,12 @@ class MainShell extends StatefulWidget {
 class _MainShellState extends State<MainShell> {
   int _currentIndex = 0;
 
-  final List<Widget> _screens = const [
-    HomeScreen(),
-    MapScreen(),
-    StatisticsScreen(),
-    ExportScreen(),
-    SettingsScreen(),
+  List<Widget> get _screens => [
+    const HomeScreen(),
+    kIsWeb ? const map_web.MapScreenWeb() : const MapScreen(),
+    const StatisticsScreen(),
+    const ExportScreen(),
+    const SettingsScreen(),
   ];
 
   final List<_NavItem> _navItems = const [

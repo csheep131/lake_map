@@ -1,0 +1,11 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(flutter *)",
+      "Bash(/home/schaf/flutter_sdk/bin/flutter *)",
+      "Bash(/home/schaf/develop/flutter/bin/flutter *)",
+      "Bash(xxd)"
+    ]
+  },
+  "$version": 4
+}

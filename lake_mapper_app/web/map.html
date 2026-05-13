@@ -1,0 +1,274 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Wammsee Karte</title>
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  html, body { width: 100%; height: 100%; overflow: hidden; font-family: 'Segoe UI', sans-serif; }
+  #map { width: 100%; height: 100%; }
+  .leaflet-control-attribution { display: none !important; }
+  .leaflet-control-zoom { display: none !important; }
+  
+  /* Info-Bar oben */
+  #info-bar {
+    position: absolute; top: 0; left: 0; right: 0; z-index: 1000;
+    background: linear-gradient(180deg, rgba(10,25,41,0.92) 0%, rgba(10,25,41,0.6) 80%, transparent 100%);
+    color: #e0e0e0; padding: 10px 16px; font-size: 14px; font-weight: 700;
+    display: flex; align-items: center; gap: 12px;
+  }
+  #info-bar .title { flex: 1; font-size: 18px; letter-spacing: 1px; }
+  #info-bar .btn {
+    background: rgba(0,230,230,0.15); border: 1px solid rgba(0,230,230,0.3);
+    color: #00e6e6; padding: 6px 12px; border-radius: 8px; cursor: pointer;
+    font-size: 12px; font-weight: 600;
+  }
+  #info-bar .btn:hover { background: rgba(0,230,230,0.3); }
+  
+  /* Depth popup */
+  .depth-popup { font-family: 'Segoe UI', sans-serif; }
+  .depth-popup strong { color: #00bcd4; }
+  
+  /* Save dialog */
+  #save-dialog {
+    display: none; position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%);
+    z-index: 2000; background: #0a1929; border: 1px solid rgba(0,230,230,0.3);
+    border-radius: 12px; padding: 24px; min-width: 300px; color: #e0e0e0;
+    box-shadow: 0 8px 32px rgba(0,0,0,0.5);
+  }
+  #save-dialog h3 { color: #00e6e6; margin-bottom: 16px; }
+  #save-dialog input {
+    width: 100%; padding: 10px; margin-bottom: 12px; background: #132f4c;
+    border: 1px solid rgba(0,230,230,0.2); border-radius: 8px; color: #00e6e6;
+    font-size: 16px; font-family: monospace;
+  }
+  #save-dialog .coords { font-family: monospace; font-size: 11px; color: #90a4ae; margin-bottom: 12px; }
+  #save-dialog .btns { display: flex; gap: 12px; justify-content: flex-end; }
+  #save-dialog .btns button {
+    padding: 8px 16px; border-radius: 8px; border: none; cursor: pointer; font-weight: 600;
+  }
+  #save-dialog .btn-cancel { background: #132f4c; color: #90a4ae; }
+  #save-dialog .btn-save { background: #00bcd4; color: #0a1929; }
+  #overlay { display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.5); z-index: 1999; }
+</style>
+</head>
+<body>
+<div id="info-bar">
+  <span class="title">Wammsee</span>
+  <button class="btn" onclick="map.setView([49.346970, 8.446897], 15)">⊕ Zentrum</button>
+  <button class="btn" onclick="location.reload()">↻</button>
+</div>
+<div id="map"></div>
+<div id="overlay" onclick="closeSaveDialog()"></div>
+<div id="save-dialog">
+  <h3>Messpunkt speichern</h3>
+  <div class="coords" id="dialog-coords"></div>
+  <input type="number" id="depth-input" placeholder="Tiefe in Meter (z.B. 3.5)" step="0.1" min="0">
+  <input type="text" id="note-input" placeholder="Notiz (optional)">
+  <div class="btns">
+    <button class="btn-cancel" onclick="closeSaveDialog()">Abbrechen</button>
+    <button class="btn-save" onclick="savePoint()">Speichern</button>
+  </div>
+</div>
+
+<script>
+// === Map Setup ===
+const map = L.map('map', {
+  center: [49.346970, 8.446897],
+  zoom: 15,
+  zoomControl: false,
+  attributionControl: false,
+  maxZoom: 14,
+  minZoom: 5
+});
+
+// Eigene vorgerenderte Raster-Tiles vom Server (aus wammsee.pmtiles gerendert)
+L.tileLayer('/tiles/{z}/{x}/{y}.png', {
+  maxZoom: 14,
+  tileSize: 256,
+  errorTileUrl: ''  // Fehlende Tiles nicht anzeigen
+}).addTo(map);
+console.log('Tile layer added');
+
+// === Wammsee Polygon ===
+const wammseeCoords = [
+  [49.3377254, 8.4481856],[49.3377596, 8.4478062],[49.3378036, 8.4474488],
+  [49.3379039, 8.4468111],[49.3380173, 8.4463904],[49.3381671, 8.4460428],
+  [49.3383479, 8.4456287],[49.3385149, 8.4453619],[49.3386272, 8.4452098],
+  [49.3387617, 8.4451788],[49.3409174, 8.4454710],[49.3470848, 8.4464984],
+  [49.3471647, 8.4466079],[49.3472385, 8.4469641],[49.3473173, 8.4473496],
+  [49.3475760, 8.4494798],[49.3476020, 8.4497495],[49.3475922, 8.4501154],
+  [49.3475604, 8.4506719],[49.3474866, 8.4511149],[49.3472964, 8.4518402],
+  [49.3471937, 8.4519525],[49.3470892, 8.4519891],[49.3408598, 8.4505239],
+  [49.3399618, 8.4502800],[49.3395307, 8.4501303],[49.3379323, 8.4487278],
+  [49.3378115, 8.4485930],[49.3377456, 8.4483951]
+];
+
+L.polygon(wammseeCoords, {
+  color: '#00e6e6', weight: 3, opacity: 0.9,
+  fillColor: '#00e6e6', fillOpacity: 0.08
+}).addTo(map);
+
+// WAMMSEE Label
+L.marker([49.346970, 8.446897], {
+  icon: L.divIcon({
+    className: '',
+    html: '<div style="color:rgba(0,230,230,0.25);font-size:22px;font-weight:900;letter-spacing:4px;font-family:monospace;text-align:center;width:200px;margin-left:-100px;">WAMMSEE</div>',
+    iconSize: [0, 0]
+  })
+}).addTo(map);
+
+// === Depth Points ===
+let depthMarkers = [];
+const depthColors = [
+  { max: 2, color: '#4dd0e1' },
+  { max: 4, color: '#26c6da' },
+  { max: 6, color: '#00acc1' },
+  { max: 8, color: '#00838f' },
+  { max: Infinity, color: '#006064' }
+];
+
+function getDepthColor(depth) {
+  for (const c of depthColors) {
+    if (depth < c.max) return c.color;
+  }
+  return '#006064';
+}
+
+function isPointInPolygon(lat, lng) {
+  let inside = false;
+  for (let i = 0, j = wammseeCoords.length - 1; i < wammseeCoords.length; j = i++) {
+    const yi = wammseeCoords[i][0], xi = wammseeCoords[i][1];
+    const yj = wammseeCoords[j][0], xj = wammseeCoords[j][1];
+    if (yi === yj) continue;
+    const intersect = ((yi > lat) !== (yj > lat)) && (lng < (xj - xi) * (lat - yi) / (yj - yi) + xi);
+    if (intersect) inside = !inside;
+  }
+  return inside;
+}
+
+function addDepthMarker(point) {
+  const color = getDepthColor(point.depthM);
+  const marker = L.circleMarker([point.latitude, point.longitude], {
+    radius: 14, fillColor: color, fillOpacity: 1,
+    color: '#0a1929', weight: 2, opacity: 1
+  }).addTo(map);
+  
+  marker.bindPopup(`
+    <div class="depth-popup">
+      <strong>#${point.pointNumber || '?'}</strong> — ${point.depthM.toFixed(1)} m<br>
+      <small>${point.note || ''}</small><br>
+      <small style="color:#90a4ae">${point.latitude.toFixed(6)}, ${point.longitude.toFixed(6)}</small>
+    </div>
+  `);
+  
+  // Label
+  L.marker([point.latitude, point.longitude], {
+    icon: L.divIcon({
+      className: '',
+      html: `<div style="color:#0a1929;font-size:9px;font-weight:900;font-family:monospace;text-align:center;width:28px;margin-left:-14px;margin-top:-6px;">${point.pointNumber || '?'}</div>`,
+      iconSize: [0, 0]
+    })
+  }).addTo(map);
+  
+  depthMarkers.push(marker);
+}
+
+// === API: Load depth points ===
+async function loadDepthPoints() {
+  try {
+    const resp = await fetch('/api/depth-points');
+    if (resp.ok) {
+      const points = await resp.json();
+      points.forEach(addDepthMarker);
+      console.log(`Loaded ${points.length} depth points`);
+    }
+  } catch(e) {
+    console.log('Could not load depth points from API:', e);
+    // Fallback: postMessage listener für Daten von Flutter
+  }
+}
+
+// === Tap to add point ===
+let pendingLatLng = null;
+
+map.on('click', function(e) {
+  const lat = e.latlng.lat;
+  const lng = e.latlng.lng;
+  
+  if (!isPointInPolygon(lat, lng)) {
+    return; // Nur innerhalb des Sees
+  }
+  
+  pendingLatLng = { lat, lng };
+  document.getElementById('dialog-coords').textContent = `${lat.toFixed(6)}, ${lng.toFixed(6)}`;
+  document.getElementById('depth-input').value = '';
+  document.getElementById('note-input').value = '';
+  document.getElementById('save-dialog').style.display = 'block';
+  document.getElementById('overlay').style.display = 'block';
+  document.getElementById('depth-input').focus();
+});
+
+function closeSaveDialog() {
+  document.getElementById('save-dialog').style.display = 'none';
+  document.getElementById('overlay').style.display = 'none';
+  pendingLatLng = null;
+}
+
+async function savePoint() {
+  if (!pendingLatLng) return;
+  const depth = parseFloat(document.getElementById('depth-input').value);
+  const note = document.getElementById('note-input').value;
+  
+  if (isNaN(depth) || depth <= 0) {
+    alert('Bitte gültige Tiefe > 0 eingeben');
+    return;
+  }
+  
+  const point = {
+    latitude: pendingLatLng.lat,
+    longitude: pendingLatLng.lng,
+    depthM: depth,
+    note: note || null,
+    pointNumber: depthMarkers.length + 1
+  };
+  
+  // An Flutter/API senden
+  try {
+    await fetch('/api/depth-points', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(point)
+    });
+  } catch(e) {
+    console.log('API save failed, saving locally');
+  }
+  
+  addDepthMarker(point);
+  closeSaveDialog();
+}
+
+// === Communication with Flutter parent ===
+window.addEventListener('message', function(e) {
+  if (e.data && e.data.type === 'setDepthPoints') {
+    e.data.points.forEach(addDepthMarker);
+  }
+  if (e.data && e.data.type === 'flyTo') {
+    map.flyTo([e.data.lat, e.data.lng], e.data.zoom || 16);
+  }
+});
+
+// Notify parent that map is ready
+if (window.parent !== window) {
+  window.parent.postMessage({ type: 'mapReady' }, '*');
+}
+
+// Load data
+loadDepthPoints();
+console.log('Wammsee map initialized');
+</script>
+</body>
+</html>

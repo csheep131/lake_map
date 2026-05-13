@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../services/auth_service.dart';
+import '../services/sync_service.dart';
 import '../theme/app_colors.dart';
 
 class LoginScreen extends StatefulWidget {
@@ -41,8 +42,13 @@ class _LoginScreenState extends State<LoginScreen> {
     setState(() => _isLoading = false);
 
     if (result.success) {
+      // Token auch zum SyncService übergeben
+      if (result.token != null) {
+        await SyncService.instance.setAuthToken(result.token!);
+      }
+
       if (mounted) {
-        Navigator.of(context).pop(); // Zurück zur App
+        Navigator.of(context).pop(true); // true = Login war erfolgreich
       }
     } else {
       setState(() => _error = result.error ?? 'Anmeldung fehlgeschlagen');

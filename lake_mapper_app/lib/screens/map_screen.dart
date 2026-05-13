@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:math';
 import 'package:flutter/material.dart';
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter_map/flutter_map.dart';
 
 import 'package:latlong2/latlong.dart';
@@ -18,7 +19,6 @@ import '../data/wammsee_polygon.dart';
 import '../services/data_refresh_service.dart';
 import '../services/location_service.dart';
 import '../utils/geo_utils.dart';
-import 'package:flutter/foundation.dart' show kIsWeb;
 import '../services/web_gps_wrapper.dart';
 import '../services/web_gps_state.dart';
 
@@ -630,15 +630,12 @@ class _MapScreenState extends State<MapScreen> {
                     backgroundColor: _abyssMode ? Colors.transparent : const Color(0xFFF5F5F5),
                   ),
                   children: [
-                    // PMTiles vector tiles only in map mode
-                      VectorTileLayer(
-                        theme: PmTilesService.getTheme(),
-                        tileProviders: TileProviders({
-                          'protomaps': NetworkVectorTileProvider(
-                            urlTemplate: 'https://demotiles.maplibre.org/tiles/{z}/{x}/{y}.pbf',
-                          ),
-                        }),
-                      ),
+                    // Eigene vorgerenderte Raster-Tiles vom Server (aus wammsee.pmtiles)
+                    TileLayer(
+                      urlTemplate: 'https://wammsee.arxlabs.dev/tiles/{z}/{x}/{y}.png',
+                      maxZoom: 14,
+                      tileSize: 256,
+                    ),
 
                     // Water dot texture (map mode only)
                     if (!_abyssMode)

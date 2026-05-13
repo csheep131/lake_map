@@ -172,17 +172,20 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                           await authService.logout();
                           setState(() {});
                         } else {
-                          Navigator.push(
+                          final result = await Navigator.push<bool>(
                             context,
                             MaterialPageRoute(builder: (_) => const LoginScreen()),
                           );
+                          if (result == true) {
+                            setState(() {});
+                          }
                         }
                       },
                       child: Text(
                         authService.isLoggedIn ? 'ABMELDEN' : 'ANMELDEN',
                         style: TextStyle(
-                          color: authService.isLoggedIn 
-                              ? AppColors.error 
+                          color: authService.isLoggedIn
+                              ? AppColors.error
                               : AppColors.cyan,
                         ),
                       ),

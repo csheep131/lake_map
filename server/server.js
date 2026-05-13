@@ -64,14 +64,15 @@ const MIME_TYPES = {
   '.otf': 'font/otf',
   '.map': 'application/json',
   '.symbols': 'text/plain',
+  '.pmtiles': 'application/octet-stream',
 };
 
-// Statische Dateien servieren
+// Statische Dateien servieren (mit Range Request Support für PMTiles)
 function serveStatic(req, res, filePath) {
   const ext = path.extname(filePath).toLowerCase();
   const contentType = MIME_TYPES[ext] || 'application/octet-stream';
 
-  fs.readFile(filePath, (err, data) => {
+  fs.stat(filePath, (err, stats) => {
     if (err) {
       if (err.code === 'ENOENT') {
         res.writeHead(404, { 'Content-Type': 'text/plain' });
@@ -82,8 +83,30 @@ function serveStatic(req, res, filePath) {
       }
       return;
     }
-    res.writeHead(200, { 'Content-Type': contentType });
-    res.end(data);
+
+    // HTTP Range Request Support (benötigt für PMTiles)
+    const range = req.headers.range;
+    if (range) {
+      const parts = range.replace(/bytes=/, '').split('-');
+      const start = parseInt(parts[0], 10);
+      const end = parts[1] ? parseInt(parts[1], 10) : stats.size - 1;
+      const chunkSize = end - start + 1;
+
+      res.writeHead(206, {
+        'Content-Range': `bytes ${start}-${end}/${stats.size}`,
+        'Accept-Ranges': 'bytes',
+        'Content-Length': chunkSize,
+        'Content-Type': contentType,
+      });
+      fs.createReadStream(filePath, { start, end }).pipe(res);
+    } else {
+      res.writeHead(200, {
+        'Content-Type': contentType,
+        'Content-Length': stats.size,
+        'Accept-Ranges': 'bytes',
+      });
+      fs.createReadStream(filePath).pipe(res);
+    }
   });
 }
 
@@ -452,6 +475,25 @@ const server = http.createServer(async (req, res) => {
 
   console.log(`[${new Date().toISOString()}] ${req.method} ${pathname}`);
 
+  // CORS + Range Headers für alle Requests (PMTiles braucht das)
+  res.setHeader('Access-Control-Allow-Origin', '*');
+  res.setHeader('Access-Control-Allow-Methods', 'GET, OPTIONS, POST, PUT, DELETE');
+  res.setHeader('Access-Control-Allow-Headers', 'Range, Content-Type, Authorization');
+  res.setHeader('Access-Control-Expose-Headers', 'Content-Range, Content-Length, Accept-Ranges');
+
+  // Security Headers
+  res.setHeader('X-Frame-Options', 'SAMEORIGIN');
+  res.setHeader('X-Content-Type-Options', 'nosniff');
+  res.setHeader('X-XSS-Protection', '1; mode=block');
+  res.setHeader('Referrer-Policy', 'strict-origin-when-cross-origin');
+
+  // OPTIONS Preflight für alle Routes
+  if (req.method === 'OPTIONS') {
+    res.writeHead(204);
+    res.end();
+    return;
+  }
+
   const API_KEYWORDS = ['health', 'login', 'logout', 'data', 'depths', 'admin'];
   const isApiRoute = pathParts.some(p => API_KEYWORDS.includes(p));
 
@@ -477,33 +519,11 @@ const server = http.createServer(async (req, res) => {
     return;
   }
 
+  // Alle anderen statischen Dateien (Landing-Page Assets, Downloads, etc.)
   const filePath = path.join(__dirname, 'public', pathname);
-  const ext = path.extname(filePath).toLowerCase();
-  const contentType = {
-    '.html': 'text/html',
-    '.css': 'text/css',
-    '.js': 'application/javascript',
-    '.json': 'application/json',
-    '.png': 'image/png',
-    '.svg': 'image/svg+xml',
-  }[ext] || 'application/octet-stream';
-
-  fs.readFile(filePath, (err, data) => {
-    if (err) {
-      const indexPath = path.join(__dirname, 'public', 'index.html');
-      fs.readFile(indexPath, (err2, data2) => {
-        res.writeHead(200, { 'Content-Type': 'text/html' });
-        res.end(data2 || 'Not found');
-      });
-      return;
-    }
-    res.writeHead(200, { 'Content-Type': contentType });
-    res.end(data);
-  });
+  serveStatic(req, res, filePath);
 });
 
 server.listen(PORT, () => {
   console.log(`Wammsee Server lauft auf Port ${PORT}`);
 });
-
-
