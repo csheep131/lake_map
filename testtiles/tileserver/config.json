@@ -1,0 +1,36 @@
+{
+  "options": {
+    "paths": {
+      "root": "",
+      "styles": "styles",
+      "pmtiles": "data",
+      "fonts": "fonts",
+      "sprites": "sprites",
+      "mbtiles": "data"
+    },
+    "domains": [
+      "localhost:8080",
+      "127.0.0.1:8080"
+    ],
+    "allowedHosts": "*",
+    "serveAllFonts": true,
+    "serveAllStyles": true
+  },
+  "styles": {
+    "wammsee": {
+      "style": "wammsee.json",
+      "serve_rendered": true,
+      "tilejson": {
+        "bounds": [8.42, 49.325, 8.475, 49.36],
+        "format": "png",
+        "minzoom": 0,
+        "maxzoom": 14
+      }
+    }
+  },
+  "data": {
+    "wammsee": {
+      "pmtiles": "wammsee.pmtiles"
+    }
+  }
+}

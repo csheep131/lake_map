@@ -1,0 +1,85 @@
+{
+  "version": 8,
+  "name": "Wammsee Simple Raster Style",
+  "sources": {
+    "wammsee": {
+      "type": "vector",
+      "url": "pmtiles://{wammsee}"
+    }
+  },
+  "layers": [
+    {
+      "id": "background",
+      "type": "background",
+      "paint": {
+        "background-color": "#d8ead0"
+      }
+    },
+    {
+      "id": "earth",
+      "type": "fill",
+      "source": "wammsee",
+      "source-layer": "earth",
+      "paint": {
+        "fill-color": "#e8e8dc"
+      }
+    },
+    {
+      "id": "landuse",
+      "type": "fill",
+      "source": "wammsee",
+      "source-layer": "landuse",
+      "paint": {
+        "fill-color": "#d7ebc8"
+      }
+    },
+    {
+      "id": "landcover",
+      "type": "fill",
+      "source": "wammsee",
+      "source-layer": "landcover",
+      "paint": {
+        "fill-color": "#d4eac3"
+      }
+    },
+    {
+      "id": "water",
+      "type": "fill",
+      "source": "wammsee",
+      "source-layer": "water",
+      "paint": {
+        "fill-color": "#9ed7e5"
+      }
+    },
+    {
+      "id": "roads",
+      "type": "line",
+      "source": "wammsee",
+      "source-layer": "roads",
+      "paint": {
+        "line-color": "#ffffff",
+        "line-width": 1.2
+      }
+    },
+    {
+      "id": "buildings",
+      "type": "fill",
+      "source": "wammsee",
+      "source-layer": "buildings",
+      "paint": {
+        "fill-color": "#d8d0c8",
+        "fill-opacity": 0.7
+      }
+    },
+    {
+      "id": "boundaries",
+      "type": "line",
+      "source": "wammsee",
+      "source-layer": "boundaries",
+      "paint": {
+        "line-color": "#b58bd8",
+        "line-width": 1
+      }
+    }
+  ]
+}

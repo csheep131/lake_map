@@ -3,17 +3,12 @@ import 'dart:math';
 import 'package:flutter/material.dart';
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter_map/flutter_map.dart';
-
 import 'package:latlong2/latlong.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:intl/intl.dart';
 import '../database/app_database.dart';
 import '../models/depth_point.dart';
-
-import '../config/map_tile_config.dart'; // Deprecated, keep for reference
 import '../config/map_config.dart';
-import '../services/pmtiles_service.dart';
-import 'package:vector_map_tiles/vector_map_tiles.dart';
 import '../theme/app_colors.dart';
 import '../data/wammsee_polygon.dart';
 import '../services/data_refresh_service.dart';
@@ -45,7 +40,6 @@ class _MapScreenState extends State<MapScreen> {
   
   WebGpsService? _webGpsService;
   WebGpsState _webGpsState = WebGpsState();
-  VectorTileProvider? _vectorTileProvider;
   String? _mapInitError;
 
   static const _wammseeCenter = LatLng(49.346970, 8.446897);
@@ -53,7 +47,6 @@ class _MapScreenState extends State<MapScreen> {
   @override
   void initState() {
     super.initState();
-    _initVectorTiles();
     if (kIsWeb) {
       _webGpsService = getWebGpsService((newState) {
         if (mounted) {
@@ -98,23 +91,6 @@ class _MapScreenState extends State<MapScreen> {
     super.dispose();
   }
 
-  Future<void> _initVectorTiles() async {
-    try {
-      final provider = await PmTilesService.init();
-      if (mounted) {
-        setState(() {
-          _vectorTileProvider = provider;
-        });
-      }
-    } catch (e) {
-      debugPrint('Failed to initialize PMTiles: $e');
-      if (mounted) {
-        setState(() {
-          _mapInitError = e.toString();
-        });
-      }
-    }
-  }
 
   Future<void> _loadData() async {
     setState(() => _isLoading = true);
@@ -630,11 +606,22 @@ class _MapScreenState extends State<MapScreen> {
                     backgroundColor: _abyssMode ? Colors.transparent : const Color(0xFFF5F5F5),
                   ),
                   children: [
-                    // Eigene vorgerenderte Raster-Tiles vom Server (aus wammsee.pmtiles)
+                    // Eigene vorgerenderte Raster-Tiles vom Server (wammsee.pmtiles → PNG)
+                    // maxNativeZoom: flutter_map skaliert Zoom-14-Tiles hoch → kein Blank
                     TileLayer(
-                      urlTemplate: 'https://wammsee.arxlabs.dev/tiles/{z}/{x}/{y}.png',
-                      maxZoom: 14,
+                      urlTemplate: MapConfig.tileUrl,
+                      maxNativeZoom: MapConfig.sourceMaxZoom,
+                      maxZoom: MapConfig.maxZoom,
                       tileSize: 256,
+                      userAgentPackageName: 'dev.arxlabs.wammsee',
+                      errorTileCallback: (tile, error, stackTrace) {
+                        // Fehlendes Tile stillschweigend ignorieren (außerhalb Wammsee)
+                        debugPrint('[TILE] Fehlt: ${tile.coordinates}');
+                      },
+                    ),
+                    // Attribution
+                    const SimpleAttributionWidget(
+                      source: Text('Wammsee Mapper'),
                     ),
 
                     // Water dot texture (map mode only)

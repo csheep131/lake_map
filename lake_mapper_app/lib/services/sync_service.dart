@@ -77,6 +77,13 @@ class SyncService {
     if (response.statusCode >= 200 && response.statusCode < 300) {
       if (response.body.isEmpty) return {};
       return jsonDecode(response.body) as Map<String, dynamic>;
+    } else if (response.statusCode == 401) {
+      // Token ungültig oder abgelaufen – lokal löschen damit keine weiteren
+      // Requests mit dem schlechten Token gefeuert werden
+      _authToken = null;
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.remove('auth_token');
+      throw UnauthorizedException('Token ungültig oder abgelaufen. Bitte neu anmelden.');
     } else {
       throw Exception('Sync error: ${response.statusCode} ${response.body}');
     }
@@ -185,4 +192,11 @@ class SyncResult {
   final int uploaded;
   final int downloaded;
   SyncResult({required this.uploaded, required this.downloaded});
+}
+
+class UnauthorizedException implements Exception {
+  final String message;
+  UnauthorizedException(this.message);
+  @override
+  String toString() => message;
 }

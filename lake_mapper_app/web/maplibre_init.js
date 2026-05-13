@@ -1,18 +1,16 @@
 /**
- * Leaflet + protomaps-leaflet CDN Loader für Flutter Web
+ * Leaflet CDN Loader für Flutter Web
  *
- * Ersetzt MapLibre GL JS (WebGL-abhängig) durch Leaflet (Canvas2D).
- * protomaps-leaflet rendert PMTiles Vektor-Tiles ohne WebGL.
+ * Nur Leaflet wird benötigt — keine PMTiles/protomaps-leaflet mehr.
+ * Raster-Tiles kommen als vorgerenderte PNGs vom eigenen Server.
  */
 
 (function() {
   'use strict';
 
-  // CDN URLs
+  // CDN URLs — nur Leaflet
   var LEAFLET_JS = 'https://unpkg.com/leaflet@1.9.4/dist/leaflet.js';
   var LEAFLET_CSS = 'https://unpkg.com/leaflet@1.9.4/dist/leaflet.css';
-  var PMTILES_CDN = 'https://unpkg.com/pmtiles@3.0.6/dist/pmtiles.js';
-  var PROTOMAPS_LEAFLET_CDN = 'https://unpkg.com/protomaps-leaflet@4.0.1/dist/protomaps-leaflet.js';
 
   // Promise für fertiges Laden
   window._maplibreLoaded = new Promise(function(resolve, reject) {
@@ -47,29 +45,20 @@
   }
 
   async function loadAll() {
-    console.log('Map Loader: Starte (Leaflet + protomaps-leaflet)...');
+    console.log('[MAP LOADER] Starte Leaflet-Laden...');
 
     try {
-      // CSS zuerst
       await loadCSS(LEAFLET_CSS);
-      console.log('Leaflet CSS geladen');
+      console.log('[MAP LOADER] Leaflet CSS geladen');
 
-      // Leaflet laden
       await loadScript(LEAFLET_JS);
-      console.log('Leaflet JS geladen');
+      console.log('[MAP LOADER] Leaflet JS geladen');
 
-      // PMTiles + protomaps-leaflet parallel
-      await loadScript(PMTILES_CDN);
-      console.log('PMTiles JS geladen');
-
-      await loadScript(PROTOMAPS_LEAFLET_CDN);
-      console.log('protomaps-leaflet JS geladen');
-
-      console.log('Map Loader: Fertig (kein WebGL benötigt)');
+      console.log('[MAP LOADER] Fertig (nur Leaflet, keine externen Tile-Quellen)');
       window._maplibreResolve();
 
     } catch (e) {
-      console.error('Map Loader Fehler:', e);
+      console.error('[MAP LOADER] Fehler:', e);
       window._maplibreReject(e);
     }
   }

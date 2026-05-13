@@ -279,6 +279,7 @@ async function handleApiRequest(req, res) {
     return;
   }
 
+  try {
   const users = await query('SELECT id, is_admin FROM users WHERE username = $1', [username]);
   if (users.length === 0) {
     res.writeHead(401, { 'Content-Type': 'application/json' });
@@ -302,20 +303,20 @@ async function handleApiRequest(req, res) {
       let depths;
       if (isAdmin) {
         depths = await query(`
-          SELECT d.id, d.depth_m, d.longitude, d.latitude, d.accuracy_m, d.note, d.created_at, d.point_number,
+          SELECT d.id, d.depth_m, d.longitude, d.latitude, d.accuracy_m, d.note, d.measured_at,
                  l.id as lake_id, l.name as lake_name
           FROM lake_depths d
           JOIN lakes l ON d.lake_id = l.id
-          ORDER BY d.created_at DESC
+          ORDER BY d.measured_at DESC
         `);
       } else {
         depths = await query(`
-          SELECT d.id, d.depth_m, d.longitude, d.latitude, d.accuracy_m, d.note, d.created_at, d.point_number,
+          SELECT d.id, d.depth_m, d.longitude, d.latitude, d.accuracy_m, d.note, d.measured_at,
                  l.id as lake_id, l.name as lake_name
           FROM lake_depths d
           JOIN lakes l ON d.lake_id = l.id
           WHERE d.user_id = $1
-          ORDER BY d.created_at DESC
+          ORDER BY d.measured_at DESC
         `, [userId]);
       }
 
@@ -400,7 +401,7 @@ async function handleApiRequest(req, res) {
         return;
       }
       const users = await query(`
-        SELECT u.id, u.username, COUNT(d.id) as depth_count, MAX(d.created_at) as last_activity
+        SELECT u.id, u.username, COUNT(d.id) as depth_count, MAX(d.measured_at) as last_activity
         FROM users u
         LEFT JOIN lake_depths d ON u.id = d.user_id
         GROUP BY u.id, u.username
@@ -428,7 +429,7 @@ async function handleApiRequest(req, res) {
         FROM lake_depths d
         JOIN lakes l ON d.lake_id = l.id
         WHERE d.user_id = $1
-        ORDER BY d.created_at DESC
+        ORDER BY d.measured_at DESC
       `, [targetUserId]);
       const userInfo = await query('SELECT id, username FROM users WHERE id = $1', [targetUserId]);
       res.writeHead(200, { 'Content-Type': 'application/json' });
@@ -465,6 +466,11 @@ async function handleApiRequest(req, res) {
     console.error(e);
     res.writeHead(500, { 'Content-Type': 'application/json' });
     res.end(JSON.stringify({ error: e.message }));
+  }
+  } catch (e) {
+    console.error('[DB] Fehler beim Laden des Users:', e);
+    res.writeHead(500, { 'Content-Type': 'application/json' });
+    res.end(JSON.stringify({ error: 'Datenbankfehler' }));
   }
 }
 

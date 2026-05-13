@@ -1,12 +1,12 @@
 /**
- * Leaflet + protomaps-leaflet Bridge für Flutter Web
- * Kein WebGL erforderlich — rendert mit Canvas2D.
- * PMTiles Vektor-Tiles werden über protomaps-leaflet gerendert.
+ * Leaflet Map Bridge für Flutter Web
+ *
+ * Verwendet ausschließlich lokal gebündelte Raster-Tiles (web/tiles/{z}/{x}/{y}.png).
+ * Kein OSM, kein PMTiles-Client, keine externen Tile-Quellen.
  */
 
 window._maplibreState = window._maplibreState || {
   map: null,
-  pmtilesLoaded: false,
   lastError: null,
   onMapReady: null,
   onMapError: null,
@@ -14,371 +14,284 @@ window._maplibreState = window._maplibreState || {
   onMapMove: null,
 };
 
-console.log('Map Bridge JS geladen (Leaflet + protomaps-leaflet)');
+// 1×1 transparentes GIF – für fehlende Tiles, damit keine roten Fehler-Kacheln erscheinen
+var TRANSPARENT_TILE = 'data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7';
+
+console.log('[MAP BRIDGE] Geladen (lokale Raster-Tiles)');
 
 /**
- * PMTiles URL ermitteln (relativ zum aktuellen Host)
+ * Map initialisieren
+ * @param {string} containerId  – ID des DOM-Containers
+ * @param {string} tileBaseUrl  – Basis-URL für Tiles, z.B. "tiles" (relativ) oder absolute URL
+ * @param {object} options      – { center: [lng, lat], zoom: number }
  */
-function _resolvePmtilesUrl(pmtilesUrl) {
-  if (pmtilesUrl.startsWith('http://') || pmtilesUrl.startsWith('https://')) {
-    return pmtilesUrl;
-  }
-  var base = document.querySelector('base');
-  var baseHref = base ? base.getAttribute('href') : '/';
-  if (!baseHref.endsWith('/')) baseHref += '/';
-  return window.location.origin + baseHref + pmtilesUrl;
-}
+window.initMapLibreMap = function(containerId, tileBaseUrl, options) {
+  console.log('[MAP BRIDGE] Warte auf Container', containerId, '…');
 
-/**
- * Map initialisieren (Leaflet + protomaps-leaflet)
- */
-window.initMapLibreMap = function(containerId, pmtilesUrl, options) {
-  console.log('Map: Initializing in container', containerId);
+  var _attempts = 0;
 
-  try {
+  function _tryFind() {
     var container = document.getElementById(containerId);
     if (!container) {
-      console.error('Map: Container nicht gefunden:', containerId);
-      window._maplibreState.lastError = 'Container nicht gefunden';
-      if (window._maplibreState.onMapError) {
-        window._maplibreState.onMapError('Container nicht gefunden');
-      }
+      _attempts++;
+      if (_attempts < 60) { setTimeout(_tryFind, 250); }
+      else { console.error('[MAP BRIDGE] Container nicht gefunden:', containerId); }
       return;
     }
+    console.log('[MAP BRIDGE] Container gefunden nach', _attempts * 250, 'ms');
+    _waitStableSize(container);
+  }
 
-    if (typeof L === 'undefined') {
-      console.error('Map: Leaflet nicht geladen');
-      window._maplibreState.lastError = 'Leaflet nicht geladen';
-      if (window._maplibreState.onMapError) {
-        window._maplibreState.onMapError('Leaflet nicht geladen');
-      }
-      return;
-    }
+  // Warte bis Container stabile Pixel-Maße hat (Flutter layoutet asynchron)
+  var _sw = 0, _sh = 0, _stableCount = 0, _sChecks = 0;
 
-    console.log('Map: Leaflet geladen, erstelle Karte...');
+  function _waitStableSize(container) {
+    var w = container.offsetWidth;
+    var h = container.offsetHeight;
 
-    // Container-Größe sicherstellen
-    container.style.width = '100%';
-    container.style.height = '100%';
-
-    // Leaflet Karte erstellen
-    var center = options.center || [8.4495, 49.3425];
-    var zoom = options.zoom || 15.5;
-
-    var map = L.map(container, {
-      center: [center[1], center[0]], // Leaflet nutzt [lat, lng]
-      zoom: zoom,
-      minZoom: 13,
-      maxZoom: 19,
-      zoomControl: false,
-      attributionControl: false,
-    });
-
-    // Bounds setzen (Wammsee + Umgebung)
-    var bounds = L.latLngBounds(
-      L.latLng(49.3335, 8.4385), // SW
-      L.latLng(49.3515, 8.4595)  // NE
-    );
-    map.setMaxBounds(bounds.pad(0.5));
-
-    // OSM Basis-Tiles (ohne Attribution)
-    var osmLayer = L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
-      attribution: '',
-      maxZoom: 19
-    }).addTo(map);
-
-    // PMTiles Vektor-Layer (protomaps-leaflet)
-    var resolvedUrl = _resolvePmtilesUrl(pmtilesUrl);
-    console.log('Map: PMTiles URL:', resolvedUrl);
-
-    if (typeof protomapsL !== 'undefined') {
-      try {
-        var pmtilesLayer = protomapsL.leafletLayer({
-          url: resolvedUrl,
-          paintRules: _getPaintRules(),
-          labelRules: _getLabelRules(),
-        });
-        pmtilesLayer.addTo(map);
-        console.log('Map: protomaps-leaflet PMTiles Layer hinzugefügt');
-        window._maplibreState.pmtilesLoaded = true;
-      } catch (e) {
-        console.warn('Map: protomaps-leaflet Fehler (OSM wird verwendet):', e);
+    if (w > 0 && h > 0 && w === _sw && h === _sh) {
+      _stableCount++;
+      if (_stableCount >= 2) {
+        console.log('[MAP BRIDGE] Container stabil', w + 'x' + h, 'nach', _sChecks * 150 + 'ms');
+        _initLeaflet(container, w, h);
+        return;
       }
     } else {
-      console.warn('Map: protomaps-leaflet nicht geladen, nur OSM');
+      _stableCount = 0; _sw = w; _sh = h;
     }
+    _sChecks++;
+    if (_sChecks < 80) setTimeout(function() { _waitStableSize(container); }, 150);
+    else if (w > 0 && h > 0) { console.warn('[MAP BRIDGE] Timeout, init mit', w + 'x' + h); _initLeaflet(container, w, h); }
+    else { console.error('[MAP BRIDGE] Container bleibt 0x0'); }
+  }
 
-    // Overlay-Layer (GPS, Tiefenpunkte) vorbereiten
-    window._mapOverlayLayers = {};
-    _addOverlayLayers(map);
-
-    // Events
-    map.on('click', function(e) {
-      var tap = {
-        lat: e.latlng.lat,
-        lng: e.latlng.lng,
-        timestamp: Date.now()
-      };
-      window._maplibreState.lastTap = tap;
-      if (window._maplibreState.onMapTap) {
-        window._maplibreState.onMapTap(tap);
+  function _initLeaflet(container, cw, ch) {
+    try {
+      if (typeof L === 'undefined') {
+        console.error('[MAP BRIDGE] Leaflet nicht geladen!');
+        return;
       }
-    });
 
-    map.on('moveend', function() {
-      var center = map.getCenter();
-      if (window._maplibreState.onMapMove) {
-        window._maplibreState.onMapMove({
-          lat: center.lat,
-          lng: center.lng,
-          zoom: map.getZoom()
-        });
-      }
-    });
+      // Explizite Pixel-Maße → Leaflet berechnet Tile-Grid korrekt
+      container.style.width  = cw + 'px';
+      container.style.height = ch + 'px';
+      container.style.position = 'absolute';
+      container.style.top  = '0';
+      container.style.left = '0';
 
-    window._maplibreState.map = map;
-    window._maplibreState.lastError = null;
+      // ── Karten-Konfiguration ───────────────────────────────────────────
+      var cfg = options || {};
+      var centerLng = (cfg.center && cfg.center[0]) || 8.4485;
+      var centerLat = (cfg.center && cfg.center[1]) || 49.3394;  // Grenze zwischen beiden Tiles
+      var initZoom  = cfg.zoom  || 14;
 
-    if (window._maplibreState.onMapReady) {
-      window._maplibreState.onMapReady();
-    }
+      // Bounds die beide Tiles umfassen
+      var swLat = 49.3230, swLng = 8.4355;
+      var neLat = 49.3550, neLng = 8.4620;
 
-    console.log('Map: Erfolgreich initialisiert (Leaflet, kein WebGL)');
+      var map = L.map(container, {
+        center:             [centerLat, centerLng],
+        zoom:               initZoom,
+        minZoom:            13,
+        maxZoom:            18,
+        zoomControl:        false,
+        attributionControl: false,
+      });
 
-  } catch(e) {
-    console.error('Map: Init error:', e);
-    window._maplibreState.lastError = e.message;
-    if (window._maplibreState.onMapError) {
-      window._maplibreState.onMapError(e.message);
+      map.setMaxBounds(
+        L.latLngBounds(L.latLng(swLat, swLng), L.latLng(neLat, neLng)).pad(0.15)
+      );
+
+      var resolvedBase = _resolveBase(tileBaseUrl);
+
+      // ── Tile 14/8576/5602 (nördlicher Teil des Wammsee) ──────────────
+      // lon: 8.4375°E–8.4595°E  |  lat: 49.3394°N–49.3538°N
+      L.imageOverlay(
+        resolvedBase + '/14/8576/5602.png',
+        L.latLngBounds(L.latLng(49.3394, 8.4375), L.latLng(49.3538, 8.4595)),
+        { opacity: 1.0, interactive: false }
+      ).addTo(map);
+
+      // ── Tile 14/8576/5603 (südlicher Teil des Wammsee) ───────────────
+      // lon: 8.4375°E–8.4595°E  |  lat: 49.3250°N–49.3394°N
+      L.imageOverlay(
+        resolvedBase + '/14/8576/5603.png',
+        L.latLngBounds(L.latLng(49.3250, 8.4375), L.latLng(49.3394, 8.4595)),
+        { opacity: 1.0, interactive: false }
+      ).addTo(map);
+
+      var tileUrl = resolvedBase + '/14/8576/560{2,3}.png'; // für Debug-Panel
+
+      // ── Overlay-Layer: GPS, Tiefenpunkte, Polygon ─────────────────────
+      window._mapOverlayLayers = {};
+      window._mapOverlayLayers.gpsGroup     = L.layerGroup().addTo(map);
+      window._mapOverlayLayers.depthGroup   = L.layerGroup().addTo(map);
+      window._mapOverlayLayers.polygonGroup = L.layerGroup().addTo(map);
+
+      // ── Events ────────────────────────────────────────────────────────
+      map.on('click', function(e) {
+        var tap = { lat: e.latlng.lat, lng: e.latlng.lng, timestamp: Date.now() };
+        window._maplibreState.lastTap = tap;
+        if (window._maplibreState.onMapTap) window._maplibreState.onMapTap(tap);
+      });
+
+      map.on('moveend', function() {
+        var c = map.getCenter();
+        _updateDebugPanel(map, tileUrl);
+        if (window._maplibreState.onMapMove) {
+          window._maplibreState.onMapMove({ lat: c.lat, lng: c.lng, zoom: map.getZoom() });
+        }
+      });
+
+      window._maplibreState.map = map;
+      window._maplibreState.lastError = null;
+
+      // Debug-Panel
+      _createDebugPanel(map, container, tileUrl);
+
+      // ResizeObserver: wenn Flutter den Container neu layoutet
+      var ro = new ResizeObserver(function(entries) {
+        for (var entry of entries) {
+          var r = entry.contentRect;
+          if (r.width > 0 && r.height > 0) {
+            container.style.width  = r.width  + 'px';
+            container.style.height = r.height + 'px';
+            map.invalidateSize({ animate: false });
+          }
+        }
+      });
+      ro.observe(container.parentElement || container);
+
+      if (window._maplibreState.onMapReady) window._maplibreState.onMapReady();
+      console.log('[MAP BRIDGE] Karte initialisiert ✓');
+
+    } catch(e) {
+      console.error('[MAP BRIDGE] Fehler:', e);
+      window._maplibreState.lastError = e.message;
+      if (window._maplibreState.onMapError) window._maplibreState.onMapError(e.message);
     }
   }
+
+  _tryFind();
 };
 
-/**
- * protomaps-leaflet Paint Rules
- * Styling für PMTiles Vektor-Tiles (Protomaps Basemap)
- */
-function _getPaintRules() {
-  if (typeof protomapsL === 'undefined') return [];
-
-  return [
-    {
-      dataLayer: 'earth',
-      symbolizer: new protomapsL.PolygonSymbolizer({ fill: '#e8e8e0', opacity: 0.4 })
-    },
-    {
-      dataLayer: 'water',
-      symbolizer: new protomapsL.PolygonSymbolizer({ fill: '#8ecae6', opacity: 0.7 })
-    },
-    {
-      dataLayer: 'landuse',
-      symbolizer: new protomapsL.PolygonSymbolizer({ fill: '#dcedc8', opacity: 0.4 })
-    },
-    {
-      dataLayer: 'natural',
-      symbolizer: new protomapsL.PolygonSymbolizer({ fill: '#c8e6c9', opacity: 0.4 })
-    },
-    {
-      dataLayer: 'buildings',
-      symbolizer: new protomapsL.PolygonSymbolizer({ fill: '#d5d5d5', opacity: 0.6, stroke: '#bbb', width: 0.5 }),
-      minzoom: 14
-    },
-    {
-      dataLayer: 'roads',
-      symbolizer: new protomapsL.LineSymbolizer({ color: '#ffffff', width: 3, opacity: 0.6 }),
-      filter: function(z, f) { return f.props.kind === 'highway'; }
-    },
-    {
-      dataLayer: 'roads',
-      symbolizer: new protomapsL.LineSymbolizer({ color: '#ffa726', width: 2, opacity: 0.7 }),
-      filter: function(z, f) { return f.props.kind === 'highway'; }
-    },
-    {
-      dataLayer: 'roads',
-      symbolizer: new protomapsL.LineSymbolizer({ color: '#e0e0e0', width: 1.5, opacity: 0.6 }),
-      filter: function(z, f) { return f.props.kind !== 'highway'; }
-    },
-    {
-      dataLayer: 'boundaries',
-      symbolizer: new protomapsL.LineSymbolizer({ color: '#999', width: 1, opacity: 0.3, dash: [3, 2] })
-    },
-  ];
+// ── URL Helper ────────────────────────────────────────────────────────────────
+function _resolveBase(base) {
+  if (!base) return 'tiles';
+  if (base.startsWith('http://') || base.startsWith('https://')) return base;
+  // Relativ → absolut auflösen (damit Leaflet keine Probleme bekommt)
+  var a = document.createElement('a');
+  a.href = base;
+  return a.href.replace(/\/$/, '');
 }
 
-/**
- * protomaps-leaflet Label Rules
- */
-function _getLabelRules() {
-  if (typeof protomapsL === 'undefined') return [];
-
-  return [
-    {
-      dataLayer: 'places',
-      symbolizer: new protomapsL.CenteredTextSymbolizer({
-        labelProps: ['name:de', 'name'],
-        fill: '#444',
-        stroke: '#fff',
-        width: 2,
-        font: '13px sans-serif'
-      }),
-      minzoom: 10
-    },
-    {
-      dataLayer: 'water',
-      symbolizer: new protomapsL.CenteredTextSymbolizer({
-        labelProps: ['name:de', 'name'],
-        fill: '#2979b0',
-        stroke: 'rgba(255,255,255,0.8)',
-        width: 1.5,
-        font: 'italic 13px sans-serif'
-      }),
-      filter: function(z, f) { return f.props.name; }
-    },
-  ];
+// ── Debug-Panel ───────────────────────────────────────────────────────────────
+function _createDebugPanel(map, container, tileUrl) {
+  var panel = document.createElement('div');
+  panel.id = 'map-debug-panel';
+  panel.style.cssText =
+    'position:absolute;bottom:8px;left:8px;z-index:9999;' +
+    'background:rgba(10,25,41,0.85);color:#00e5cc;padding:8px 12px;' +
+    'border-radius:8px;font-family:monospace;font-size:10px;line-height:1.6;' +
+    'border:1px solid rgba(0,229,204,0.2);pointer-events:none;max-width:320px;';
+  container.appendChild(panel);
+  window._mapDebugPanel = panel;
+  window._mapDebugTileUrl = tileUrl;
+  _updateDebugPanel(map, tileUrl);
 }
 
-/**
- * Overlay-Layer hinzufügen (GPS, Tiefenpunkte)
- */
-function _addOverlayLayers(map) {
-  // GPS-Marker Layer
-  window._mapOverlayLayers.gpsGroup = L.layerGroup().addTo(map);
-  // Tiefenpunkte Layer
-  window._mapOverlayLayers.depthGroup = L.layerGroup().addTo(map);
-  // Wammsee Polygon Layer
-  window._mapOverlayLayers.polygonGroup = L.layerGroup().addTo(map);
+function _updateDebugPanel(map, tileUrl) {
+  var panel = window._mapDebugPanel;
+  if (!panel) return;
+  var c = map.getCenter();
+  panel.innerHTML =
+    '<b>[MAP DEBUG]</b><br>' +
+    'Tiles: ' + (window._mapDebugTileUrl || tileUrl || '?') + '<br>' +
+    'Zoom: ' + map.getZoom().toFixed(1) + '<br>' +
+    'Center: ' + c.lat.toFixed(5) + ', ' + c.lng.toFixed(5) + '<br>' +
+    'GPS: ' + (window._mapGpsStatus || 'nicht aktiv');
 }
 
-// =====================================================
-// Marker und Overlay API (für Dart JS-Interop)
-// =====================================================
-
-/**
- * Wammsee Lake Polygon zeichnen
- */
-window.drawWammseePolygon = function(polygonCoords) {
+// ── Polygon ───────────────────────────────────────────────────────────────────
+window.drawWammseePolygon = function(coords) {
   var map = window._maplibreState.map;
   if (!map || !window._mapOverlayLayers) return;
+  var g = window._mapOverlayLayers.polygonGroup;
+  g.clearLayers();
 
-  var group = window._mapOverlayLayers.polygonGroup;
-  group.clearLayers();
-
-  // Outer glow
-  L.polygon(polygonCoords, {
-    color: '#00e5ff',
-    weight: 8,
-    opacity: 0.1,
-    fill: false,
-  }).addTo(group);
-
-  // Main outline
-  L.polygon(polygonCoords, {
-    color: '#00e5ff',
-    weight: 3,
-    opacity: 0.7,
-    fillColor: '#00e5ff',
-    fillOpacity: 0.06,
-  }).addTo(group);
+  // Glow
+  L.polygon(coords, { color: '#00e5ff', weight: 8, opacity: 0.08, fill: false }).addTo(g);
+  // Outline
+  L.polygon(coords, {
+    color: '#00e5ff', weight: 2.5, opacity: 0.75,
+    fillColor: '#00e5ff', fillOpacity: 0.05,
+  }).addTo(g);
 };
 
-/**
- * Tiefenpunkte auf der Karte anzeigen
- */
+// ── Tiefenpunkte ─────────────────────────────────────────────────────────────
 window.setDepthPoints = function(points) {
   var map = window._maplibreState.map;
   if (!map || !window._mapOverlayLayers) return;
-
-  var group = window._mapOverlayLayers.depthGroup;
-  group.clearLayers();
+  var g = window._mapOverlayLayers.depthGroup;
+  g.clearLayers();
 
   for (var i = 0; i < points.length; i++) {
     var p = points[i];
     var color = _depthColor(p.depth);
-
-    var marker = L.circleMarker([p.lat, p.lng], {
-      radius: 10,
-      fillColor: color,
-      color: '#0a1929',
-      weight: 1.5,
-      fillOpacity: 0.85,
-    }).addTo(group);
-
-    marker.bindTooltip(
-      (p.number ? '#' + p.number + ': ' : '') + p.depth.toFixed(1) + 'm',
+    var m = L.circleMarker([p.lat, p.lng], {
+      radius: 9, fillColor: color, color: '#0a1929', weight: 1.5, fillOpacity: 0.88,
+    }).addTo(g);
+    m.bindTooltip(
+      (p.number ? '#' + p.number + ': ' : '') + p.depth.toFixed(1) + ' m',
       { permanent: false, direction: 'top', className: 'depth-tooltip' }
     );
   }
 };
 
-/**
- * GPS-Position anzeigen
- */
+// ── GPS-Position ─────────────────────────────────────────────────────────────
 window.setGpsPosition = function(lat, lng, accuracy) {
   var map = window._maplibreState.map;
   if (!map || !window._mapOverlayLayers) return;
+  var g = window._mapOverlayLayers.gpsGroup;
+  g.clearLayers();
 
-  var group = window._mapOverlayLayers.gpsGroup;
-  group.clearLayers();
+  window._mapGpsStatus = 'aktiv (' + (accuracy ? accuracy.toFixed(0) + ' m' : '?') + ')';
+  _updateDebugPanel(map, window._mapDebugTileUrl);
 
-  // GPS Marker
   L.circleMarker([lat, lng], {
-    radius: 8,
-    fillColor: '#42a5f5',
-    color: '#fff',
-    weight: 3,
-    fillOpacity: 0.9,
-  }).addTo(group);
-
-  // GPS Glow
+    radius: 8, fillColor: '#42a5f5', color: '#fff', weight: 3, fillOpacity: 0.92,
+  }).addTo(g);
   L.circleMarker([lat, lng], {
-    radius: 16,
-    fillColor: '#42a5f5',
-    color: 'transparent',
-    fillOpacity: 0.2,
-  }).addTo(group);
+    radius: 18, fillColor: '#42a5f5', color: 'transparent', fillOpacity: 0.18,
+  }).addTo(g);
 };
 
-/**
- * Karte auf Position zentrieren
- */
+// ── Navigation ───────────────────────────────────────────────────────────────
 window.flyMapTo = function(lat, lng, zoom) {
   var map = window._maplibreState.map;
   if (!map) return;
   map.flyTo([lat, lng], zoom || map.getZoom());
 };
 
-// Alias für Dart-Interop Kompatibilität
-window.flyTo = window.flyMapTo;
 window.setMapCenter = function(lat, lng, zoom) {
   var map = window._maplibreState.map;
   if (!map) return;
-  if (zoom) {
-    map.setView([lat, lng], zoom);
-  } else {
-    map.setView([lat, lng]);
-  }
+  map.setView([lat, lng], zoom || map.getZoom(), { animate: false });
 };
 
-/**
- * Map Status abfragen
- */
 window.getMapState = function() {
   return {
     initialized: window._maplibreState.map !== null,
-    pmtilesLoaded: window._maplibreState.pmtilesLoaded,
     error: window._maplibreState.lastError,
     lastTap: window._maplibreState.lastTap || null,
-    renderer: 'leaflet-canvas2d',
   };
 };
 
-/**
- * Tiefenfarbe berechnen
- */
-function _depthColor(depth) {
-  if (depth < 2) return '#00e5ff';
-  if (depth < 4) return '#26c6da';
-  if (depth < 6) return '#00bcd4';
-  if (depth < 8) return '#0097a7';
+// ── Tiefenfarbe ──────────────────────────────────────────────────────────────
+function _depthColor(d) {
+  if (d < 2) return '#00e5ff';
+  if (d < 4) return '#26c6da';
+  if (d < 6) return '#00bcd4';
+  if (d < 8) return '#0097a7';
   return '#ff6d00';
 }

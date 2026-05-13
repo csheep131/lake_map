@@ -13,6 +13,7 @@ import '../data/wammsee_polygon.dart';
 import '../theme/app_colors.dart';
 import '../services/web_gps_wrapper.dart';
 import '../services/web_gps_state.dart';
+import 'login_screen.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -102,6 +103,21 @@ class _HomeScreenState extends State<HomeScreen> {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text(_syncStatus!)),
+        );
+      }
+    } on UnauthorizedException {
+      // Token ungültig – zur Anmeldung weiterleiten
+      setState(() => _syncStatus = null);
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Sitzung abgelaufen. Bitte neu anmelden.'),
+            backgroundColor: AppColors.error,
+            duration: Duration(seconds: 3),
+          ),
+        );
+        await Navigator.of(context).push(
+          MaterialPageRoute(builder: (_) => const LoginScreen()),
         );
       }
     } catch (e) {

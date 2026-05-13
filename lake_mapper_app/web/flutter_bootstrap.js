@@ -5,7 +5,6 @@ _flutter.loader.load({
   config: {
     canvasKitVariant: "auto",
   },
-  serviceWorkerSettings: {
-    serviceWorkerVersion: {{flutter_service_worker_version}}
-  }
+  // Service Worker deaktiviert: Der Node.js Proxy gibt bei ?v=... Query-Strings
+  // HTML zurück statt JS → SecurityError (MIME type 'text/html')
 });
