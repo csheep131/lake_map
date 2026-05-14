@@ -1,0 +1,4 @@
+# Wammsee Database Manager Dependencies
+psycopg2-binary>=2.9.9
+bcrypt>=4.1.2
+colorama>=0.4.6

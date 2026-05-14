@@ -75,7 +75,14 @@ class _MapScreenState extends State<MapScreen> {
     _cachedGridPoints = _generateGridPoints();
     _loadData();
     DataRefreshService.instance.addListener(_onRefresh);
+
+    // Auto-Refresh nach 20 Sekunden (Pull vom Server)
+    _autoRefreshTimer = Timer(const Duration(seconds: 20), () {
+      _loadData();
+    });
   }
+
+  Timer? _autoRefreshTimer;
 
   void _onRefresh() {
     if (mounted) {
@@ -86,6 +93,7 @@ class _MapScreenState extends State<MapScreen> {
   @override
   void dispose() {
     _gpsLockTimer?.cancel();
+    _autoRefreshTimer?.cancel();
     _webGpsService?.stop();
     DataRefreshService.instance.removeListener(_onRefresh);
     super.dispose();

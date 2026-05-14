@@ -1,0 +1,8 @@
+{
+  "host": "localhost",
+  "port": 5432,
+  "database": "lake_db",
+  "user": "lakeuser",
+  "password": "CHANGE_ME",
+  "backup_dir": "./backups"
+}
